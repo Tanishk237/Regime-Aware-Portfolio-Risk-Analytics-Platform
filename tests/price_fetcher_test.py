@@ -17,9 +17,10 @@ tickers = [
 for ticker in tickers:
 
     price = fetcher.get_current_price(
-        ticker
+        ticker,
+        name=True
     )
-
+    
     print(
-        f"{ticker}: ₹{price:.2f}"
+        f"{ticker}: ₹{price[0]:.2f} ({price[1]})"
     )
