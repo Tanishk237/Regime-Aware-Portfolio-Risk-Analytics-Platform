@@ -22,5 +22,5 @@ class SharpeCalculator:
             *
             excess_returns.mean()
             /
-            excess_returns.std()
+            excess_returns.std() #Volatility is standard deviation of returns
         )
