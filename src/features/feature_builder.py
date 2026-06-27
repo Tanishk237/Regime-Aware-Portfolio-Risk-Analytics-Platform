@@ -1,64 +1,223 @@
 import pandas as pd
 
-from src.features.returns import (
-    ReturnFeature
+from src.features.feature_config import FeatureConfig
+from src.features.feature_validator import FeatureValidator
+
+from src.features.portfolio_features import (
+    PortfolioFeatureBuilder
 )
 
-from src.features.volatility import (
-    VolatilityFeature
+from src.features.market_features import (
+    MarketFeatureBuilder
 )
 
-from src.features.drawdown import (
-    DrawdownFeature
+from src.features.flow_features import (
+    FlowFeatureBuilder
 )
 
 
 class FeatureBuilder:
+    """
+    Master Feature Builder.
+
+    This class orchestrates all feature engineering modules
+    and produces the final feature matrix used for HMM training.
+    """
 
     def __init__(
         self,
-        volatility_window=20
+        config: FeatureConfig = None
     ):
 
-        self.volatility_window = (
-            volatility_window
+        self.config = config or FeatureConfig()
+
+        self.portfolio_builder = PortfolioFeatureBuilder(
+            volatility_window=self.config.volatility_window,
+            annualize_volatility=self.config.annualize_volatility
         )
+
+        self.validator = FeatureValidator()
+
+    # ---------------------------------------------------
+    # Portfolio Returns
+    # ---------------------------------------------------
+
+    @staticmethod
+    def build_portfolio_returns(
+        returns_df: pd.DataFrame,
+        weights=None
+    ) -> pd.Series:
+        """
+        Builds weighted portfolio returns.
+        """
+
+        if weights is None:
+
+            weights = [
+                1 / len(returns_df.columns)
+            ] * len(returns_df.columns)
+
+        portfolio_returns = (
+            returns_df
+            .mul(weights, axis=1)
+            .sum(axis=1)
+        )
+
+        portfolio_returns.name = "portfolio_return"
+
+        return portfolio_returns
+
+    # ---------------------------------------------------
+    # Main Build Pipeline
+    # ---------------------------------------------------
 
     def build(
         self,
-        portfolio_returns: pd.Series
-    ) -> pd.DataFrame:
+        merged_df: pd.DataFrame,
+        weights=None
+    ):
+        """
+        Parameters
+        ----------
+        merged_df
 
-        returns = (
-            ReturnFeature.calculate(
+            Output from DataMerger.
+
+        weights
+
+            Portfolio weights.
+
+        Returns
+        -------
+
+        feature_matrix
+
+        metadata
+        """
+
+        # ---------------------------------------------
+        # Asset Return Columns
+        # ---------------------------------------------
+
+        asset_columns = [
+
+            column
+
+            for column in merged_df.columns
+
+            if column.endswith(".NS")
+
+        ]
+
+        returns_df = merged_df[
+            asset_columns
+        ]
+
+        # ---------------------------------------------
+        # Portfolio Returns
+        # ---------------------------------------------
+
+        portfolio_returns = self.build_portfolio_returns(
+            returns_df,
+            weights
+        )
+
+        # ---------------------------------------------
+        # Portfolio Features
+        # ---------------------------------------------
+
+        portfolio_features = (
+            self.portfolio_builder.build(
                 portfolio_returns
             )
         )
 
-        volatility = (
-            VolatilityFeature.calculate(
-                portfolio_returns,
-                window=self.volatility_window
+        # Rename "return" to "portfolio_return"
+
+        portfolio_features = (
+            portfolio_features.rename(
+                columns={
+                    "return": "portfolio_return"
+                }
             )
         )
 
-        drawdown = (
-            DrawdownFeature.calculate(
-                portfolio_returns
+        # ---------------------------------------------
+        # Market Features
+        # ---------------------------------------------
+
+        market_features = (
+            MarketFeatureBuilder.build(
+                merged_df
             )
         )
 
-        features = pd.concat(
+        # ---------------------------------------------
+        # Flow Features
+        # ---------------------------------------------
+
+        flow_features = (
+            FlowFeatureBuilder.build(
+                merged_df
+            )
+        )
+
+        # ---------------------------------------------
+        # Combine Everything
+        # ---------------------------------------------
+
+        feature_matrix = pd.concat(
+
             [
-                returns,
-                volatility,
-                drawdown
+
+                portfolio_features,
+
+                market_features,
+
+                flow_features
+
             ],
+
             axis=1
+
         )
 
-        features = (
-            features.dropna()
+        # ---------------------------------------------
+        # Clean
+        # ---------------------------------------------
+
+        feature_matrix = self.validator.clean(
+            feature_matrix
         )
 
-        return features
+        # ---------------------------------------------
+        # Validation Report
+        # ---------------------------------------------
+
+        validation_report = self.validator.validate(
+            feature_matrix
+        )
+
+        # ---------------------------------------------
+        # Metadata
+        # ---------------------------------------------
+
+        metadata = self.validator.build_metadata(
+
+            feature_matrix,
+
+            self.config
+
+        )
+
+        metadata[
+            "validation"
+        ] = validation_report
+
+        return (
+
+            feature_matrix,
+
+            metadata
+
+        )
