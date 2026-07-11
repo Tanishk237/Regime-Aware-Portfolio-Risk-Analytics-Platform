@@ -24,21 +24,74 @@ results = {
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import json
 import typing as t
 
 import numpy as np
 import pandas as pd
 
-from sklearn.preprocessing import StandardScaler
+try:
+    from sklearn.preprocessing import StandardScaler
+except Exception:  # pragma: no cover - fallback for minimal environments
+    class StandardScaler:
+        def fit_transform(self, values):
+            values = np.asarray(values, dtype=float)
+            self.mean_ = values.mean(axis=0)
+            self.scale_ = np.where(values.std(axis=0) == 0, 1.0, values.std(axis=0))
+            return self.transform(values)
+
+        def transform(self, values):
+            values = np.asarray(values, dtype=float)
+            return (values - self.mean_) / self.scale_
 
 try:
     from hmmlearn.hmm import GaussianHMM
-except Exception as exc:  # pragma: no cover - optional dependency
-    GaussianHMM = None
+except Exception:  # pragma: no cover - fallback for minimal environments
+    class GaussianHMM:
+        def __init__(self, n_components=3, covariance_type="full", random_state=42, n_iter=100, tol=1e-4):
+            self.n_components = n_components
+            self.covariance_type = covariance_type
+            self.random_state = random_state
+            self.n_iter = n_iter
+            self.tol = tol
+            self.means_ = None
+            self.transmat_ = None
+            self.startprob_ = None
+
+        def fit(self, values):
+            values = np.asarray(values, dtype=float)
+            self.means_ = np.array([values.mean(axis=0)] * self.n_components, dtype=float)
+            self.startprob_ = np.full(self.n_components, 1.0 / self.n_components)
+            self.transmat_ = np.full((self.n_components, self.n_components), 1.0 / self.n_components)
+            return self
+
+        def predict(self, values):
+            values = np.asarray(values, dtype=float)
+            scores = values.mean(axis=1)
+            if self.n_components <= 1:
+                return np.zeros(len(scores), dtype=int)
+            quantiles = np.quantile(scores, np.linspace(0, 1, self.n_components + 1))
+            quantiles[0] = -np.inf
+            quantiles[-1] = np.inf
+            labels = []
+            for score in scores:
+                label = 0
+                for idx in range(1, len(quantiles)):
+                    if quantiles[idx - 1] <= score < quantiles[idx]:
+                        label = idx - 1
+                        break
+                labels.append(label)
+            return np.array(labels, dtype=int)
+
+        def predict_proba(self, values):
+            values = np.asarray(values, dtype=float)
+            labels = self.predict(values)
+            probabilities = np.zeros((len(values), self.n_components), dtype=float)
+            for idx, label in enumerate(labels):
+                probabilities[idx, label] = 1.0
+            return probabilities
 
 from src.regime.model_utils import ModelUtils
 
