@@ -47,12 +47,14 @@ class RegimeSummaryGenerator:
         return None
 
     @staticmethod
-    def _regime_durations(state_sequence: pd.Series) -> list[int]:
-        durations: list[int] = []
+    def _regime_durations_by_state(state_sequence: pd.Series) -> dict[int, list[int]]:
+        durations_by_state: dict[int, list[int]] = {}
         current_duration = 1
         previous_state = None
 
         for state in state_sequence.tolist():
+            state = int(state)
+
             if previous_state is None:
                 previous_state = state
                 continue
@@ -60,14 +62,20 @@ class RegimeSummaryGenerator:
             if state == previous_state:
                 current_duration += 1
             else:
-                durations.append(current_duration)
+                durations_by_state.setdefault(
+                    int(previous_state),
+                    []
+                ).append(current_duration)
                 current_duration = 1
                 previous_state = state
 
         if previous_state is not None:
-            durations.append(current_duration)
+            durations_by_state.setdefault(
+                int(previous_state),
+                []
+            ).append(current_duration)
 
-        return durations
+        return durations_by_state
 
     def generate_summary(
         self,
@@ -86,10 +94,16 @@ class RegimeSummaryGenerator:
 
         summary_rows: list[dict] = []
         duration_rows: list[dict] = []
+        durations_by_state = self._regime_durations_by_state(
+            state_sequence
+        )
 
         for state in sorted(feature_matrix["state"].unique().tolist()):
             state_slice = feature_matrix.loc[feature_matrix["state"] == state]
-            durations = self._regime_durations(state_slice["state"])
+            durations = durations_by_state.get(
+                int(state),
+                []
+            )
 
             summary_rows.append(
                 {

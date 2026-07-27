@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -39,22 +40,23 @@ def build_feature_matrix() -> pd.DataFrame:
     )
 
 
-def test_full_regime_pipeline():
+def test_full_regime_pipeline(tmp_path):
     feature_matrix = build_feature_matrix()
-    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir="models"))
+    model_dir = str(tmp_path / "models")
+    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir=model_dir))
     training_result = trainer.train(feature_matrix, save=True)
 
-    predictor = RegimePredictor(model_dir="models")
+    predictor = RegimePredictor(model_dir=model_dir)
     prediction_payload = predictor.predict(feature_matrix)
 
     summary_generator = RegimeSummaryGenerator()
     summary_payload = summary_generator.generate_summary(feature_matrix, training_result["states"])
 
-    labeller = StateLabeller(model_dir="models")
+    labeller = StateLabeller(model_dir=model_dir)
     labels = labeller.generate_labels(feature_matrix, training_result["states"])
     labeller.save_labels(labels)
 
-    probability_engine = RegimeProbabilityEngine(model_dir="models")
+    probability_engine = RegimeProbabilityEngine(model_dir=model_dir)
     probability_df = probability_engine.probability_dataframe(feature_matrix)
 
     print("Current Regime:", prediction_payload["current_state"])
@@ -76,5 +78,6 @@ def test_full_regime_pipeline():
 
 
 if __name__ == "__main__":
-    test_full_regime_pipeline()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_full_regime_pipeline(Path(temp_dir))
     print("full_regime_pipeline test passed")

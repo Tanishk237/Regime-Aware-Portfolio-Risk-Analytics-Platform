@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -36,12 +37,13 @@ def build_feature_matrix() -> pd.DataFrame:
     )
 
 
-def test_state_labelling_pipeline():
+def test_state_labelling_pipeline(tmp_path):
     feature_matrix = build_feature_matrix()
-    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir="models"))
+    model_dir = str(tmp_path / "models")
+    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir=model_dir))
     training_result = trainer.train(feature_matrix, save=True)
 
-    labeller = StateLabeller(model_dir="models")
+    labeller = StateLabeller(model_dir=model_dir)
     labels = labeller.generate_labels(feature_matrix, training_result["states"])
     labeller.save_labels(labels)
     loaded_labels = labeller.load_labels()
@@ -53,5 +55,6 @@ def test_state_labelling_pipeline():
 
 
 if __name__ == "__main__":
-    test_state_labelling_pipeline()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_state_labelling_pipeline(Path(temp_dir))
     print("state_labeller test passed")

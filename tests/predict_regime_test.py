@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -36,12 +37,13 @@ def build_feature_matrix() -> pd.DataFrame:
     )
 
 
-def test_regime_prediction_pipeline():
+def test_regime_prediction_pipeline(tmp_path):
     feature_matrix = build_feature_matrix()
-    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir="models"))
+    model_dir = str(tmp_path / "models")
+    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir=model_dir))
     trainer.train(feature_matrix, save=True)
 
-    predictor = RegimePredictor(model_dir="models")
+    predictor = RegimePredictor(model_dir=model_dir)
     payload = predictor.predict(feature_matrix)
 
     assert set(payload.keys()) == {"state_sequence", "current_state", "transition_matrix", "prediction_dataframe"}
@@ -51,5 +53,6 @@ def test_regime_prediction_pipeline():
 
 
 if __name__ == "__main__":
-    test_regime_prediction_pipeline()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_regime_prediction_pipeline(Path(temp_dir))
     print("predict_regime test passed")

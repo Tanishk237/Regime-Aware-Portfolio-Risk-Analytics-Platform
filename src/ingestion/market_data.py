@@ -48,3 +48,19 @@ class MarketDataFetcher:
             start_date,
             end_date
         )
+
+
+def get_price_history(
+    tickers,
+    start_date,
+    end_date=None
+) -> pd.DataFrame:
+    """
+    Backward-compatible module-level wrapper used by older pipeline scripts.
+    """
+
+    return MarketDataFetcher.get_price_history(
+        tickers=tickers,
+        start_date=start_date,
+        end_date=end_date
+    )

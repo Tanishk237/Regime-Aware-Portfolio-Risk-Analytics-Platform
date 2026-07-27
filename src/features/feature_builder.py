@@ -26,10 +26,23 @@ class FeatureBuilder:
 
     def __init__(
         self,
-        config: FeatureConfig = None
+        config: FeatureConfig = None,
+        **config_overrides
     ):
 
         self.config = config or FeatureConfig()
+
+        for key, value in config_overrides.items():
+            if not hasattr(self.config, key):
+                raise TypeError(
+                    f"Unknown FeatureConfig option: {key}"
+                )
+
+            setattr(
+                self.config,
+                key,
+                value
+            )
 
         self.portfolio_builder = PortfolioFeatureBuilder(
             volatility_window=self.config.volatility_window,

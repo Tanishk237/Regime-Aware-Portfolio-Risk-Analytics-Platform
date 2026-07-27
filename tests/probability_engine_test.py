@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -36,12 +37,13 @@ def build_feature_matrix() -> pd.DataFrame:
     )
 
 
-def test_probability_engine():
+def test_probability_engine(tmp_path):
     feature_matrix = build_feature_matrix()
-    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir="models"))
+    model_dir = str(tmp_path / "models")
+    trainer = HMMTrainer(HMMConfig(n_states=4, model_dir=model_dir))
     trainer.train(feature_matrix, save=True)
 
-    engine = RegimeProbabilityEngine(model_dir="models")
+    engine = RegimeProbabilityEngine(model_dir=model_dir)
     probability_df = engine.probability_dataframe(feature_matrix)
     current_probabilities = engine.current_probabilities(feature_matrix)
     most_probable_regime = engine.most_probable_regime(feature_matrix)
@@ -53,5 +55,6 @@ def test_probability_engine():
 
 
 if __name__ == "__main__":
-    test_probability_engine()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_probability_engine(Path(temp_dir))
     print("probability_engine test passed")
