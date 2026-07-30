@@ -30,6 +30,7 @@ def create_portfolio(client: TestClient) -> dict:
             "name": "Core India Portfolio",
             "description": "Long-term holdings",
             "base_currency": "INR",
+            "benchmark": "NIFTY50",
         },
     )
 
@@ -55,12 +56,14 @@ def test_portfolio_crud_flow(tmp_path):
                 "name": "Updated Portfolio",
                 "description": None,
                 "base_currency": "usd",
+                "benchmark": "niftybank",
             },
         )
         assert update_response.status_code == 200
         assert update_response.json()["name"] == "Updated Portfolio"
         assert update_response.json()["description"] is None
         assert update_response.json()["base_currency"] == "USD"
+        assert update_response.json()["benchmark"] == "NIFTYBANK"
 
         delete_response = client.delete(f"/api/v1/portfolio/{created['id']}")
         assert delete_response.status_code == 204
@@ -79,21 +82,26 @@ def test_manual_trade_entry_edit_delete_positions_and_summary(tmp_path):
             f"/api/v1/portfolio/{portfolio_id}/trades",
             json={
                 "ticker": "reliance.ns",
-                "shares": 10,
-                "buy_date": "2024-01-01",
-                "buy_price": 2500,
+                "transaction_type": "BUY",
+                "quantity": 10,
+                "transaction_date": "2024-01-01",
+                "price": 2500,
+                "fees": 10,
+                "taxes": 5,
             },
         )
         assert first_trade.status_code == 201
         assert first_trade.json()["ticker"] == "RELIANCE.NS"
+        assert first_trade.json()["transaction_type"] == "BUY"
 
         second_trade = client.post(
             f"/api/v1/portfolio/{portfolio_id}/trades",
             json={
                 "ticker": "RELIANCE.NS",
-                "shares": 5,
-                "buy_date": "2024-08-01",
-                "buy_price": 2900,
+                "transaction_type": "BUY",
+                "quantity": 5,
+                "transaction_date": "2024-08-01",
+                "price": 2900,
             },
         )
         assert second_trade.status_code == 201
@@ -103,30 +111,32 @@ def test_manual_trade_entry_edit_delete_positions_and_summary(tmp_path):
         positions = positions_response.json()
         assert len(positions) == 1
         assert positions[0]["ticker"] == "RELIANCE.NS"
-        assert positions[0]["shares"] == 15
-        assert round(positions[0]["avg_cost"], 2) == 2633.33
+        assert positions[0]["quantity"] == 15
+        assert round(positions[0]["avg_cost"], 2) == 2634.33
         assert round(positions[0]["cost_weight"], 6) == 1.0
+        assert positions[0]["realized_pnl"] == 0
 
         summary_response = client.get(f"/api/v1/portfolio/{portfolio_id}/summary")
         assert summary_response.status_code == 200
         summary = summary_response.json()
         assert summary["trades_count"] == 2
         assert summary["positions_count"] == 1
-        assert summary["invested_value"] == 39500
+        assert summary["invested_value"] == 39515
+        assert summary["realized_profit"] == 0
 
         trade_id = second_trade.json()["id"]
         update_trade = client.put(
             f"/api/v1/portfolio/{portfolio_id}/trades/{trade_id}",
             json={
-                "shares": 10,
-                "buy_price": 3000,
+                "quantity": 10,
+                "price": 3000,
             },
         )
         assert update_trade.status_code == 200
 
         positions = client.get(f"/api/v1/portfolio/{portfolio_id}/positions").json()
-        assert positions[0]["shares"] == 20
-        assert positions[0]["cost_basis"] == 55000
+        assert positions[0]["quantity"] == 20
+        assert positions[0]["cost_basis"] == 55015
 
         delete_trade = client.delete(
             f"/api/v1/portfolio/{portfolio_id}/trades/{trade_id}"
@@ -134,15 +144,73 @@ def test_manual_trade_entry_edit_delete_positions_and_summary(tmp_path):
         assert delete_trade.status_code == 204
 
         positions = client.get(f"/api/v1/portfolio/{portfolio_id}/positions").json()
-        assert positions[0]["shares"] == 10
-        assert positions[0]["cost_basis"] == 25000
+        assert positions[0]["quantity"] == 10
+        assert positions[0]["cost_basis"] == 25015
+
+
+def test_sell_transaction_updates_quantity_and_realized_pnl(tmp_path):
+    with build_client(tmp_path) as client:
+        portfolio = create_portfolio(client)
+        portfolio_id = portfolio["id"]
+
+        client.post(
+            f"/api/v1/portfolio/{portfolio_id}/trades",
+            json={
+                "ticker": "INFY.NS",
+                "transaction_type": "BUY",
+                "quantity": 20,
+                "transaction_date": "2024-01-01",
+                "price": 1000,
+            },
+        )
+        sell_response = client.post(
+            f"/api/v1/portfolio/{portfolio_id}/trades",
+            json={
+                "ticker": "INFY.NS",
+                "transaction_type": "SELL",
+                "quantity": 5,
+                "transaction_date": "2024-02-01",
+                "price": 1200,
+                "fees": 10,
+                "taxes": 5,
+            },
+        )
+        assert sell_response.status_code == 201
+
+        positions = client.get(f"/api/v1/portfolio/{portfolio_id}/positions").json()
+        assert positions[0]["quantity"] == 15
+        assert positions[0]["cost_basis"] == 15000
+        assert positions[0]["realized_pnl"] == 985
+
+        summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
+        assert summary["realized_profit"] == 985
+
+
+def test_sell_transaction_cannot_exceed_current_quantity(tmp_path):
+    with build_client(tmp_path) as client:
+        portfolio = create_portfolio(client)
+        portfolio_id = portfolio["id"]
+
+        response = client.post(
+            f"/api/v1/portfolio/{portfolio_id}/trades",
+            json={
+                "ticker": "INFY.NS",
+                "transaction_type": "SELL",
+                "quantity": 1,
+                "transaction_date": "2024-02-01",
+                "price": 1200,
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "INSUFFICIENT_POSITION_QUANTITY"
 
 
 def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
     csv_content = (
-        "ticker,shares,buy_date,buy_price,notes\n"
-        "RELIANCE.NS,10,2024-01-01,2500,core\n"
-        "INFY.NS,20,2024-03-15,1500,it\n"
+        "ticker,transaction_type,quantity,transaction_date,price,broker,fees,taxes,currency,notes\n"
+        "RELIANCE.NS,BUY,10,2024-01-01,2500,Zerodha,0,0,INR,core\n"
+        "INFY.NS,BUY,20,2024-03-15,1500,Zerodha,0,0,INR,it\n"
     )
 
     with build_client(tmp_path) as client:
@@ -152,6 +220,7 @@ def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
                 "name": "Uploaded Portfolio",
                 "description": "CSV import",
                 "base_currency": "INR",
+                "benchmark": "NIFTY50",
             },
             files={
                 "file": (
@@ -182,7 +251,7 @@ def test_csv_upload_validates_required_columns(tmp_path):
             files={
                 "file": (
                     "portfolio.csv",
-                    "ticker,shares\nRELIANCE.NS,10\n",
+                    "ticker,quantity\nRELIANCE.NS,10\n",
                     "text/csv",
                 )
             },

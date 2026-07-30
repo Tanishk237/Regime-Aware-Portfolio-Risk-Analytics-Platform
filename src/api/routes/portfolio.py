@@ -58,6 +58,7 @@ def create_portfolio(
         name=payload.name,
         description=payload.description,
         base_currency=payload.base_currency,
+        benchmark=payload.benchmark,
     )
 
 
@@ -66,6 +67,7 @@ async def upload_portfolio(
     name: str = Form(...),
     description: Optional[str] = Form(default=None),
     base_currency: str = Form(default="INR"),
+    benchmark: str = Form(default="NIFTY50"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -78,6 +80,7 @@ async def upload_portfolio(
         name=name,
         description=description,
         base_currency=base_currency,
+        benchmark=benchmark,
         csv_text=csv_text,
     )
 
@@ -115,6 +118,7 @@ def update_portfolio(
         name=payload.name,
         description=payload.description,
         base_currency=payload.base_currency,
+        benchmark=payload.benchmark,
         update_description="description" in provided_fields,
     )
 
@@ -154,9 +158,14 @@ def add_trade(
         user,
         portfolio_id,
         ticker=payload.ticker,
-        shares=payload.shares,
-        buy_date=payload.buy_date,
-        buy_price=payload.buy_price,
+        transaction_type=payload.transaction_type,
+        quantity=payload.quantity,
+        price=payload.price,
+        transaction_date=payload.transaction_date,
+        broker=payload.broker,
+        fees=payload.fees,
+        taxes=payload.taxes,
+        currency=payload.currency,
         notes=payload.notes,
     )
 
