@@ -6,6 +6,10 @@ __pycache__/
 .coverage
 htmlcov/
 
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
 venv/
 .venv/
 env/
