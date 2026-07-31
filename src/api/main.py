@@ -11,6 +11,7 @@ from src.api.errors import register_exception_handlers
 from src.api.routes import api_router
 from src.config import Settings, get_settings
 from src.database import get_db, init_database
+from src.database.migrations import run_migrations
 from src.database.session import build_engine, build_session_factory
 from src.utils.logging import configure_logging
 
@@ -26,6 +27,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if settings.run_migrations_on_startup:
+            run_migrations(settings.database_url)
         if settings.create_db_on_startup:
             init_database(db_engine)
         yield

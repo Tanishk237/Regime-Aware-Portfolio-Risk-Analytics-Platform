@@ -13,7 +13,7 @@ def build_client(tmp_path) -> TestClient:
     settings = Settings(
         environment="test",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
-        create_db_on_startup=True,
+        run_migrations_on_startup=True,
         default_user_email="test@example.com",
         default_user_name="Test User",
     )

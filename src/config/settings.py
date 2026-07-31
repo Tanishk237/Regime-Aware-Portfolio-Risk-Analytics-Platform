@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
     database_url: str = "sqlite:///./data/regime.db"
-    create_db_on_startup: bool = True
+    create_db_on_startup: bool = False
+    run_migrations_on_startup: bool = False
     default_user_email: str = "local@example.com"
     default_user_name: str = "Local User"
     cors_origins: List[str] = Field(
