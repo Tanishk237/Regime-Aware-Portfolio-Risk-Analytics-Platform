@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     run_migrations_on_startup: bool = False
     default_user_email: str = "local@example.com"
     default_user_name: str = "Local User"
+    fii_dii_csv_path: str = "data/external/fii_dii.csv"
     cors_origins: List[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
