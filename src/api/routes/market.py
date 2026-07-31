@@ -18,6 +18,7 @@ from src.api.schemas_market import (
 from src.config import Settings, get_settings
 from src.database import get_db
 from src.market import MarketDataService
+from src.market.cache import market_data_cache
 
 
 router = APIRouter(
@@ -27,6 +28,18 @@ router = APIRouter(
 
 def parse_tickers(value: str) -> list[str]:
     return [ticker.strip() for ticker in value.split(",") if ticker.strip()]
+
+
+def market_service(db: Session, settings: Settings) -> MarketDataService:
+    return MarketDataService(
+        db,
+        default_fii_dii_path=settings.fii_dii_csv_path,
+        provider_name=settings.market_data_provider,
+        cache=market_data_cache,
+        cache_ttl_seconds=settings.market_data_cache_ttl_seconds,
+        provider_retries=settings.market_data_provider_retries,
+        provider_retry_backoff_seconds=settings.market_data_provider_retry_backoff_seconds,
+    )
 
 
 @router.get("/historical-prices", response_model=HistoricalPricesResponse)
@@ -39,7 +52,7 @@ def historical_prices(
     settings: Settings = Depends(get_settings),
 ) -> HistoricalPricesResponse:
     parsed_tickers = parse_tickers(tickers)
-    records = MarketDataService(db, default_fii_dii_path=settings.fii_dii_csv_path).get_historical_prices(
+    records = market_service(db, settings).get_historical_prices(
         parsed_tickers,
         start_date,
         end_date,
@@ -60,7 +73,7 @@ def live_prices(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LivePricesResponse:
-    records = MarketDataService(db, default_fii_dii_path=settings.fii_dii_csv_path).get_live_prices(
+    records = market_service(db, settings).get_live_prices(
         parse_tickers(tickers),
         include_name=include_name,
     )
@@ -76,7 +89,7 @@ def india_vix(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> VIXHistoryResponse:
-    records = MarketDataService(db, default_fii_dii_path=settings.fii_dii_csv_path).get_india_vix(
+    records = market_service(db, settings).get_india_vix(
         start_date,
         end_date,
         window=window,
@@ -98,7 +111,7 @@ def fii_dii_flows(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> FIIDIIFlowsResponse:
-    records = MarketDataService(db, default_fii_dii_path=settings.fii_dii_csv_path).get_fii_dii_flows(
+    records = market_service(db, settings).get_fii_dii_flows(
         start_date=start_date,
         end_date=end_date,
         window=window,
@@ -120,7 +133,7 @@ def market_index_data(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> MarketIndexResponse:
-    records = MarketDataService(db, default_fii_dii_path=settings.fii_dii_csv_path).get_market_index_data(
+    records = market_service(db, settings).get_market_index_data(
         symbol,
         start_date,
         end_date,
@@ -145,7 +158,7 @@ def feature_matrix(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> FeatureMatrixResponse:
-    result = MarketDataService(db, default_fii_dii_path=settings.fii_dii_csv_path).build_feature_matrix(
+    result = market_service(db, settings).build_feature_matrix(
         tickers=payload.tickers,
         start_date=payload.start_date,
         end_date=payload.end_date,

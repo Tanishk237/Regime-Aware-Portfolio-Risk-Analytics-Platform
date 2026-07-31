@@ -1,5 +1,6 @@
-import yfinance as yf
 import pandas as pd
+
+from src.market.providers import YahooFinanceProvider
 
 
 class VIXDataFetcher:
@@ -20,12 +21,9 @@ class VIXDataFetcher:
         end_date=None
     ) -> pd.DataFrame:
 
-        vix = yf.download(
-            "^INDIAVIX",
-            start=start_date,
-            end=end_date,
-            auto_adjust=True,
-            progress=False
+        vix = YahooFinanceProvider().get_india_vix(
+            start_date,
+            end_date,
         )
 
         if isinstance(vix.columns, pd.MultiIndex) and "Close" in vix.columns.get_level_values(0):

@@ -1,4 +1,4 @@
-import yfinance as yf
+from src.market.providers import YahooFinanceProvider
 
 
 class PriceFetcher:
@@ -8,16 +8,15 @@ class PriceFetcher:
         ticker: str,
         name: bool = False
     ):
-        data = yf.Ticker(ticker)
-
-        price = float(
-            data.history(period="1d")["Close"].iloc[-1]
+        data = YahooFinanceProvider().get_live_price(
+            ticker,
+            include_name=name,
         )
 
         if name:
             return (
-                price,
-                data.info.get("longName", "Unknown")
+                data["price"],
+                data["name"],
             )
 
-        return price
+        return data["price"]

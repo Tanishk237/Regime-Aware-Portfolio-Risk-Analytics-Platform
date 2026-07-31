@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     default_user_email: str = "local@example.com"
     default_user_name: str = "Local User"
     fii_dii_csv_path: str = "data/external/fii_dii.csv"
+    market_data_provider: str = "yahoo"
+    market_data_cache_ttl_seconds: int = 900
+    market_data_provider_retries: int = 3
+    market_data_provider_retry_backoff_seconds: float = 0.25
+    market_data_refresh_enabled: bool = False
+    market_data_refresh_interval_seconds: int = 900
+    market_data_refresh_symbols: List[str] = Field(default_factory=list)
     cors_origins: List[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",

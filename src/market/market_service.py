@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterable, Optional
 
 import pandas as pd
-import yfinance as yf
 from fastapi import status
 from sqlalchemy.orm import Session
 
 from src.api.errors import AppError
 from src.database.models import FIIDIIHistory, MarketFeature, MarketPrice, VIXHistory
 from src.features.feature_builder import FeatureBuilder
-from src.features.feature_validator import FeatureValidator
 from src.ingestion.data_merger import DataMerger
 from src.ingestion.fii_dii_data import FIIDIIDataFetcher
-from src.ingestion.market_data import MarketDataFetcher
 from src.ingestion.vix_data import VIXDataFetcher
-from src.portfolio.price_fetcher import PriceFetcher
+from src.market.cache import InMemoryMarketDataCache, MarketDataCache
+from src.market.providers import MarketDataProvider, build_market_data_provider
+from src.market.validators import MarketDataValidator
 
 
 logger = logging.getLogger(__name__)
@@ -30,9 +29,22 @@ class MarketDataService:
         db: Session,
         *,
         default_fii_dii_path: str = "data/external/fii_dii.csv",
+        provider: Optional[MarketDataProvider] = None,
+        provider_name: str = "yahoo",
+        cache: Optional[MarketDataCache] = None,
+        cache_ttl_seconds: int = 900,
+        provider_retries: int = 3,
+        provider_retry_backoff_seconds: float = 0.25,
     ):
         self.db = db
         self.default_fii_dii_path = Path(default_fii_dii_path)
+        self.provider = provider or build_market_data_provider(
+            provider_name,
+            retries=provider_retries,
+            retry_backoff_seconds=provider_retry_backoff_seconds,
+        )
+        self.cache = cache or InMemoryMarketDataCache()
+        self.cache_ttl_seconds = cache_ttl_seconds
 
     def get_historical_prices(
         self,
@@ -44,16 +56,33 @@ class MarketDataService:
     ) -> list[dict]:
         self._validate_date_range(start_date, end_date)
         normalized_tickers = self._normalize_tickers(tickers)
+        cache_key = self._cache_key("historical", normalized_tickers, start_date, end_date)
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            logger.info("Market data cache hit for %s", cache_key)
+            return cached
+
+        stored = self._get_stored_prices(normalized_tickers, start_date, end_date)
+        if self._stored_prices_cover_request(stored, normalized_tickers, start_date, end_date):
+            logger.info("Market data DB hit for historical prices: %s", normalized_tickers)
+            self.cache.set(cache_key, stored, self.cache_ttl_seconds)
+            return stored
+
         try:
-            raw_prices = self._download_ohlcv(
-                normalized_tickers,
-                start_date,
-                end_date,
-            )
+            refresh_records = self._fetch_missing_price_records(normalized_tickers, start_date, end_date, stored)
+            MarketDataValidator.validate_ohlcv_records(refresh_records)
+            if persist:
+                self._upsert_market_prices(refresh_records)
+        except AppError:
+            raise
         except Exception as exc:
+            if stored:
+                logger.warning("Historical provider failed; serving stored prices. %s", exc)
+                self.cache.set(cache_key, stored, self.cache_ttl_seconds)
+                return stored
             raise self._market_data_error("Unable to fetch historical prices.", exc) from exc
 
-        records = self._normalize_ohlcv(raw_prices, normalized_tickers)
+        records = self._get_stored_prices(normalized_tickers, start_date, end_date)
         if not records:
             raise AppError(
                 "No historical price data was returned for the requested tickers and date range.",
@@ -61,9 +90,7 @@ class MarketDataService:
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
-        if persist:
-            self._upsert_market_prices(records)
-
+        self.cache.set(cache_key, records, self.cache_ttl_seconds)
         return records
 
     def get_live_prices(
@@ -73,17 +100,29 @@ class MarketDataService:
         include_name: bool = False,
     ) -> list[dict]:
         records = []
-        fetcher = PriceFetcher()
 
         for ticker in self._normalize_tickers(tickers):
+            cache_key = self._cache_key("live", [ticker], None, None, include_name)
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                logger.info("Market data cache hit for %s", cache_key)
+                records.append(cached)
+                continue
             try:
-                if include_name:
-                    price, name = fetcher.get_current_price(ticker, name=True)
-                    records.append({"ticker": ticker, "price": price, "name": name})
-                else:
-                    price = fetcher.get_current_price(ticker)
-                    records.append({"ticker": ticker, "price": price, "name": None})
+                record = self.provider.get_live_price(ticker, include_name=include_name)
+                self.cache.set(cache_key, record, self.cache_ttl_seconds)
+                records.append(record)
             except Exception as exc:
+                fallback = self._get_latest_stored_price(ticker)
+                if fallback is not None:
+                    logger.warning("Live provider failed; serving latest stored close for %s. %s", ticker, exc)
+                    record = {
+                        "ticker": ticker,
+                        "price": fallback["close"],
+                        "name": None,
+                    }
+                    records.append(record)
+                    continue
                 raise self._market_data_error(f"Unable to fetch live price for {ticker}.", exc) from exc
 
         return records
@@ -104,30 +143,32 @@ class MarketDataService:
                 status_code=422,
             )
 
+        cache_key = self._cache_key("vix", ["^INDIAVIX"], start_date, end_date, window)
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            logger.info("Market data cache hit for %s", cache_key)
+            return cached
+
+        stored = self._get_stored_vix(start_date, end_date, window)
+        if self._stored_vix_covers_request(stored, start_date, end_date):
+            self.cache.set(cache_key, stored, self.cache_ttl_seconds)
+            return stored
+
         try:
-            vix = VIXDataFetcher.get_vix_history(start_date, end_date)
+            vix = self.provider.get_india_vix(start_date, end_date)
             vix = VIXDataFetcher.add_vix_change(vix, window=window)
+            records = self._normalize_vix_records(vix, window)
+            MarketDataValidator.validate_vix_records(records)
+            if persist:
+                self._upsert_vix(records)
         except Exception as exc:
+            if stored:
+                logger.warning("VIX provider failed; serving stored VIX data. %s", exc)
+                self.cache.set(cache_key, stored, self.cache_ttl_seconds)
+                return stored
             raise self._market_data_error("Unable to fetch India VIX history.", exc) from exc
 
-        if "vix" not in vix.columns:
-            raise AppError(
-                "India VIX data did not contain a vix column.",
-                code="MARKET_DATA_INVALID",
-                status_code=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        change_column = f"vix_change_{window}"
-        records = []
-        for row_date, row in vix.dropna(subset=["vix"]).iterrows():
-            value = row.get(change_column)
-            records.append(
-                {
-                    "date": self._to_date(row_date),
-                    "vix": float(row["vix"]),
-                    "vix_change": self._optional_float(value),
-                }
-            )
+        records = self._get_stored_vix(start_date, end_date, window)
 
         if not records:
             raise AppError(
@@ -136,9 +177,7 @@ class MarketDataService:
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
-        if persist:
-            self._upsert_vix(records)
-
+        self.cache.set(cache_key, records, self.cache_ttl_seconds)
         return records
 
     def get_fii_dii_flows(
@@ -253,14 +292,16 @@ class MarketDataService:
         weights = self._normalize_weights(weights) if weights is not None else None
 
         try:
-            prices = MarketDataFetcher.get_price_history(
+            price_records = self.get_historical_prices(
                 normalized_tickers,
                 start_date,
                 end_date,
+                persist=persist,
             )
-            returns = MarketDataFetcher.get_returns(self._ensure_dataframe(prices, normalized_tickers))
-            vix = VIXDataFetcher.get_vix_history(start_date, end_date)
-            vix = VIXDataFetcher.add_vix_change(vix, window=5)
+            prices = self._price_records_to_frame(price_records)
+            returns = prices.pct_change().dropna()
+            vix_records = self.get_india_vix(start_date, end_date, window=5, persist=persist)
+            vix = self._vix_records_to_frame(vix_records)
             flows = self._flow_frame_for_features(
                 filepath=fii_dii_path,
                 start_date=start_date,
@@ -273,14 +314,7 @@ class MarketDataService:
         except Exception as exc:
             raise self._market_data_error("Unable to build market feature matrix.", exc) from exc
 
-        validation = metadata.get("validation", FeatureValidator.validate(feature_matrix))
-        is_valid = (
-            validation.get("rows", 0) > 0
-            and validation.get("missing_values", 0) == 0
-            and validation.get("duplicate_index", 0) == 0
-            and validation.get("infinite_values", 0) == 0
-        )
-        validation = self._json_ready({**validation, "is_valid": bool(is_valid)})
+        validation = self._json_ready(MarketDataValidator.validate_feature_matrix(feature_matrix))
         metadata = self._json_ready(metadata)
 
         records = [
@@ -304,19 +338,29 @@ class MarketDataService:
             "validation": validation,
         }
 
-    def _download_ohlcv(
+    def _fetch_missing_price_records(
         self,
         tickers: list[str],
         start_date: date,
         end_date: Optional[date],
-    ) -> pd.DataFrame:
-        return yf.download(
-            tickers if len(tickers) > 1 else tickers[0],
-            start=start_date,
-            end=end_date,
-            auto_adjust=True,
-            progress=False,
-        )
+        stored: list[dict],
+    ) -> list[dict]:
+        records = []
+        stored_by_ticker: dict[str, list[dict]] = {ticker: [] for ticker in tickers}
+        for record in stored:
+            stored_by_ticker.setdefault(record["ticker"], []).append(record)
+
+        for ticker in tickers:
+            existing = stored_by_ticker.get(ticker, [])
+            missing_start = start_date
+            if existing:
+                latest = max(record["date"] for record in existing)
+                missing_start = max(start_date, latest + timedelta(days=1))
+            if end_date is not None and missing_start > end_date:
+                continue
+            raw_prices = self.provider.get_ohlcv([ticker], missing_start, end_date)
+            records.extend(self._normalize_ohlcv(raw_prices, [ticker]))
+        return records
 
     def _normalize_ohlcv(
         self,
@@ -347,6 +391,30 @@ class MarketDataService:
 
         return records
 
+    def _normalize_vix_records(
+        self,
+        vix: pd.DataFrame,
+        window: int,
+    ) -> list[dict]:
+        if "vix" not in vix.columns:
+            raise AppError(
+                "India VIX data did not contain a vix column.",
+                code="MARKET_DATA_INVALID",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        change_column = f"vix_change_{window}"
+        records = []
+        for row_date, row in vix.dropna(subset=["vix"]).iterrows():
+            records.append(
+                {
+                    "date": self._to_date(row_date),
+                    "vix": float(row["vix"]),
+                    "vix_change": self._optional_float(row.get(change_column)),
+                }
+            )
+        return records
+
     def _extract_ticker_ohlcv(
         self,
         raw_prices: pd.DataFrame,
@@ -363,6 +431,118 @@ class MarketDataService:
             return raw_prices.xs(ticker, axis=1, level=0, drop_level=True)
 
         return pd.DataFrame(index=raw_prices.index)
+
+    def _get_stored_prices(
+        self,
+        tickers: list[str],
+        start_date: date,
+        end_date: Optional[date],
+    ) -> list[dict]:
+        query = (
+            self.db.query(MarketPrice)
+            .filter(MarketPrice.ticker.in_(tickers))
+            .filter(MarketPrice.date >= start_date)
+            .order_by(MarketPrice.ticker, MarketPrice.date)
+        )
+        if end_date is not None:
+            query = query.filter(MarketPrice.date <= end_date)
+
+        return [
+            {
+                "ticker": row.ticker,
+                "date": row.date,
+                "open": row.open,
+                "high": row.high,
+                "low": row.low,
+                "close": row.close,
+                "volume": row.volume,
+            }
+            for row in query.all()
+        ]
+
+    def _stored_prices_cover_request(
+        self,
+        records: list[dict],
+        tickers: list[str],
+        start_date: date,
+        end_date: Optional[date],
+    ) -> bool:
+        if end_date is None:
+            return False
+        for ticker in tickers:
+            ticker_records = [record for record in records if record["ticker"] == ticker]
+            if not ticker_records:
+                return False
+            dates = [record["date"] for record in ticker_records]
+            if min(dates) > start_date or max(dates) < end_date:
+                return False
+        return True
+
+    def _get_latest_stored_price(self, ticker: str) -> Optional[dict]:
+        row = (
+            self.db.query(MarketPrice)
+            .filter(MarketPrice.ticker == ticker)
+            .order_by(MarketPrice.date.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        return {
+            "ticker": row.ticker,
+            "date": row.date,
+            "close": row.close,
+        }
+
+    def _get_stored_vix(
+        self,
+        start_date: date,
+        end_date: Optional[date],
+        window: int,
+    ) -> list[dict]:
+        query = (
+            self.db.query(VIXHistory)
+            .filter(VIXHistory.date >= start_date)
+            .order_by(VIXHistory.date)
+        )
+        if end_date is not None:
+            query = query.filter(VIXHistory.date <= end_date)
+
+        frame = pd.DataFrame(
+            [{"date": row.date, "vix": row.vix} for row in query.all()]
+        )
+        if frame.empty:
+            return []
+        frame["date"] = pd.to_datetime(frame["date"])
+        frame = frame.set_index("date")
+        frame = VIXDataFetcher.add_vix_change(frame, window=window)
+        return self._normalize_vix_records(frame, window)
+
+    @staticmethod
+    def _stored_vix_covers_request(
+        records: list[dict],
+        start_date: date,
+        end_date: Optional[date],
+    ) -> bool:
+        if not records or end_date is None:
+            return False
+        dates = [record["date"] for record in records]
+        return min(dates) <= start_date and max(dates) >= end_date
+
+    @staticmethod
+    def _price_records_to_frame(records: list[dict]) -> pd.DataFrame:
+        frame = pd.DataFrame(records)
+        if frame.empty:
+            return pd.DataFrame()
+        frame["date"] = pd.to_datetime(frame["date"])
+        return frame.pivot(index="date", columns="ticker", values="close").sort_index()
+
+    @staticmethod
+    def _vix_records_to_frame(records: list[dict]) -> pd.DataFrame:
+        frame = pd.DataFrame(records)
+        if frame.empty:
+            return pd.DataFrame()
+        frame["date"] = pd.to_datetime(frame["date"])
+        return frame.set_index("date")[["vix", "vix_change"]].rename(columns={"vix_change": "vix_change_5"})
 
     def _flow_frame_for_features(
         self,
@@ -509,6 +689,25 @@ class MarketDataService:
         if end_date is not None:
             filtered = filtered[filtered.index.date <= end_date]
         return filtered
+
+    @staticmethod
+    def _cache_key(
+        namespace: str,
+        tickers: list[str],
+        start_date: Optional[date],
+        end_date: Optional[date],
+        *parts,
+    ) -> str:
+        tickers_key = ",".join(sorted(tickers))
+        return ":".join(
+            [
+                namespace,
+                tickers_key,
+                str(start_date or ""),
+                str(end_date or ""),
+                *[str(part) for part in parts],
+            ]
+        )
 
     @staticmethod
     def _validate_date_range(

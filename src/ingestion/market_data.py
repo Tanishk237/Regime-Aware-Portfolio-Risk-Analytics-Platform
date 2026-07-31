@@ -1,5 +1,6 @@
-import yfinance as yf
 import pandas as pd
+
+from src.market.providers import YahooFinanceProvider
 
 
 class MarketDataFetcher:
@@ -11,12 +12,15 @@ class MarketDataFetcher:
         end_date=None
     ) -> pd.DataFrame:
 
-        data = yf.download(
-            tickers,
-            start=start_date,
-            end=end_date,
-            auto_adjust=True,
-            progress=False
+        normalized_tickers = (
+            tickers
+            if isinstance(tickers, list)
+            else [tickers]
+        )
+        data = YahooFinanceProvider().get_ohlcv(
+            normalized_tickers,
+            start_date,
+            end_date,
         )
 
         if "Close" in data:

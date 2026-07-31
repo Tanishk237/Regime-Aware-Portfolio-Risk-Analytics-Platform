@@ -11,13 +11,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api.main import create_app
 from src.config.settings import Settings
 from src.database.models import FIIDIIHistory, MarketFeature, MarketPrice, VIXHistory
-from src.ingestion.market_data import MarketDataFetcher
-from src.ingestion.vix_data import VIXDataFetcher
+from src.market.cache import InMemoryMarketDataCache, market_data_cache
 from src.market.market_service import MarketDataService
-from src.portfolio.price_fetcher import PriceFetcher
+from src.market.providers import MarketDataProvider, YahooFinanceProvider
 
 
 def build_client(tmp_path, *, fii_dii_csv_path: str = "data/external/fii_dii.csv") -> TestClient:
+    market_data_cache.clear()
     settings = Settings(
         environment="test",
         database_url=f"sqlite:///{tmp_path / 'market.db'}",
@@ -43,8 +43,8 @@ def test_historical_prices_are_normalized_and_persisted(tmp_path, monkeypatch):
     )
 
     monkeypatch.setattr(
-        MarketDataService,
-        "_download_ohlcv",
+        YahooFinanceProvider,
+        "get_ohlcv",
         lambda self, tickers, start_date, end_date: raw_prices,
     )
 
@@ -62,8 +62,10 @@ def test_historical_prices_are_normalized_and_persisted(tmp_path, monkeypatch):
         payload = response.json()
         assert payload["tickers"] == ["INFY.NS", "RELIANCE.NS"]
         assert len(payload["prices"]) == 4
-        assert payload["prices"][0]["ticker"] == "RELIANCE.NS"
-        assert payload["prices"][0]["close"] == 105
+        reliance_prices = [
+            price for price in payload["prices"] if price["ticker"] == "RELIANCE.NS"
+        ]
+        assert reliance_prices[0]["close"] == 105
 
         db = client.app.state.session_factory()
         try:
@@ -78,7 +80,15 @@ def test_live_prices_return_frontend_ready_shape(tmp_path, monkeypatch):
             return 2500.5, f"{ticker} Limited"
         return 2500.5
 
-    monkeypatch.setattr(PriceFetcher, "get_current_price", fake_current_price)
+    monkeypatch.setattr(
+        YahooFinanceProvider,
+        "get_live_price",
+        lambda self, ticker, include_name=False: {
+            "ticker": ticker,
+            "price": 2500.5,
+            "name": f"{ticker} Limited" if include_name else None,
+        },
+    )
 
     with build_client(tmp_path) as client:
         response = client.get(
@@ -104,7 +114,7 @@ def test_india_vix_history_persists_snapshot(tmp_path, monkeypatch):
         {"vix": [12.0, 13.2, 12.8]},
         index=pd.date_range("2024-01-01", periods=3, freq="D"),
     )
-    monkeypatch.setattr(VIXDataFetcher, "get_vix_history", lambda start_date, end_date: vix)
+    monkeypatch.setattr(YahooFinanceProvider, "get_india_vix", lambda self, start_date, end_date: vix)
 
     with build_client(tmp_path) as client:
         response = client.get(
@@ -180,12 +190,22 @@ def test_feature_matrix_builds_validated_records_and_market_features(tmp_path, m
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        MarketDataFetcher,
-        "get_price_history",
-        lambda tickers, start_date, end_date: price_history,
-    )
-    monkeypatch.setattr(VIXDataFetcher, "get_vix_history", lambda start_date, end_date: vix)
+    def fake_ohlcv(self, tickers, start_date, end_date):
+        ticker = tickers[0]
+        close = price_history[ticker]
+        return pd.DataFrame(
+            {
+                "Open": close,
+                "High": close + 1,
+                "Low": close - 1,
+                "Close": close,
+                "Volume": 1000,
+            },
+            index=price_history.index,
+        )
+
+    monkeypatch.setattr(YahooFinanceProvider, "get_ohlcv", fake_ohlcv)
+    monkeypatch.setattr(YahooFinanceProvider, "get_india_vix", lambda self, start_date, end_date: vix)
 
     with build_client(tmp_path, fii_dii_csv_path=str(flow_path)) as client:
         response = client.post(
@@ -240,3 +260,121 @@ def test_market_endpoints_reject_invalid_date_range(tmp_path):
 
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "INVALID_DATE_RANGE"
+
+
+class CountingProvider(MarketDataProvider):
+    name = "counting"
+
+    def __init__(self):
+        self.live_calls = 0
+
+    def get_ohlcv(self, tickers, start_date, end_date=None):
+        return pd.DataFrame()
+
+    def get_live_price(self, ticker, include_name=False):
+        self.live_calls += 1
+        return {"ticker": ticker, "price": 100.0, "name": None}
+
+    def get_india_vix(self, start_date, end_date=None):
+        return pd.DataFrame()
+
+
+class FailingProvider(MarketDataProvider):
+    name = "failing"
+
+    def get_ohlcv(self, tickers, start_date, end_date=None):
+        raise RuntimeError("provider down")
+
+    def get_live_price(self, ticker, include_name=False):
+        raise RuntimeError("provider down")
+
+    def get_india_vix(self, start_date, end_date=None):
+        raise RuntimeError("provider down")
+
+
+def test_live_prices_use_cache_before_provider(tmp_path):
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        provider = CountingProvider()
+        try:
+            service = MarketDataService(
+                db,
+                provider=provider,
+                cache=InMemoryMarketDataCache(),
+                cache_ttl_seconds=900,
+            )
+            first = service.get_live_prices(["RELIANCE.NS"])
+            second = service.get_live_prices(["RELIANCE.NS"])
+
+            assert first == second
+            assert provider.live_calls == 1
+        finally:
+            db.close()
+
+
+def test_provider_failure_falls_back_to_stored_historical_prices(tmp_path):
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        try:
+            db.add(
+                MarketPrice(
+                    ticker="RELIANCE.NS",
+                    date=date(2024, 1, 1),
+                    open=100,
+                    high=110,
+                    low=95,
+                    close=105,
+                    volume=1000,
+                )
+            )
+            db.commit()
+
+            service = MarketDataService(
+                db,
+                provider=FailingProvider(),
+                cache=InMemoryMarketDataCache(),
+            )
+            records = service.get_historical_prices(
+                ["RELIANCE.NS"],
+                date(2024, 1, 1),
+                date(2024, 1, 2),
+            )
+
+            assert len(records) == 1
+            assert records[0]["close"] == 105
+        finally:
+            db.close()
+
+
+def test_invalid_provider_prices_are_rejected(tmp_path):
+    class InvalidPriceProvider(CountingProvider):
+        def get_ohlcv(self, tickers, start_date, end_date=None):
+            return pd.DataFrame(
+                {
+                    "Open": [100],
+                    "High": [90],
+                    "Low": [95],
+                    "Close": [-1],
+                    "Volume": [1000],
+                },
+                index=pd.to_datetime(["2024-01-01"]),
+            )
+
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        try:
+            service = MarketDataService(
+                db,
+                provider=InvalidPriceProvider(),
+                cache=InMemoryMarketDataCache(),
+            )
+            with pytest.raises(Exception) as exc:
+                service.get_historical_prices(
+                    ["RELIANCE.NS"],
+                    date(2024, 1, 1),
+                    date(2024, 1, 1),
+                )
+
+            assert getattr(exc.value, "code", None) == "MARKET_DATA_VALIDATION_FAILED"
+        finally:
+            db.close()

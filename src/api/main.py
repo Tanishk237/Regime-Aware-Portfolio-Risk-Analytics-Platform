@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,9 @@ from src.config import Settings, get_settings
 from src.database import get_db, init_database
 from src.database.migrations import run_migrations
 from src.database.session import build_engine, build_session_factory
+from src.market import MarketDataService
+from src.market.cache import market_data_cache
+from src.market.scheduler import MarketDataRefreshScheduler
 from src.utils.logging import configure_logging
 
 
@@ -27,11 +31,40 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        scheduler = None
         if settings.run_migrations_on_startup:
             run_migrations(settings.database_url)
         if settings.create_db_on_startup:
             init_database(db_engine)
+        if settings.market_data_refresh_enabled and settings.market_data_refresh_symbols:
+            def refresh_market_data() -> None:
+                db = session_factory()
+                try:
+                    MarketDataService(
+                        db,
+                        default_fii_dii_path=settings.fii_dii_csv_path,
+                        provider_name=settings.market_data_provider,
+                        cache=market_data_cache,
+                        cache_ttl_seconds=settings.market_data_cache_ttl_seconds,
+                        provider_retries=settings.market_data_provider_retries,
+                        provider_retry_backoff_seconds=settings.market_data_provider_retry_backoff_seconds,
+                    ).get_historical_prices(
+                        settings.market_data_refresh_symbols,
+                        date.today() - timedelta(days=30),
+                        date.today(),
+                    )
+                finally:
+                    db.close()
+
+            scheduler = MarketDataRefreshScheduler(
+                refresh_interval_seconds=settings.market_data_refresh_interval_seconds,
+                refresh_job=refresh_market_data,
+            )
+            scheduler.start()
+            app.state.market_data_scheduler = scheduler
         yield
+        if scheduler is not None:
+            scheduler.stop()
 
     app = FastAPI(
         title=settings.app_name,
