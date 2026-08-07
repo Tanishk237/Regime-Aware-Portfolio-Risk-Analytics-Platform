@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     market_data_refresh_enabled: bool = False
     market_data_refresh_interval_seconds: int = 900
     market_data_refresh_symbols: List[str] = Field(default_factory=list)
+    regime_model_dir: str = "models"
     cors_origins: List[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
