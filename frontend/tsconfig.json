@@ -1,0 +1,46 @@
+{
+	"include": [
+		"next-env.d.ts",
+		"src/**/*.ts",
+		"src/**/*.tsx",
+		"eslint.config.js",
+		".next/types/**/*.ts",
+		".next/dev/types/**/*.ts"
+	],
+	"exclude": ["node_modules"],
+	"compilerOptions": {
+		"target": "ES2022",
+		"jsx": "react-jsx",
+		"module": "ESNext",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"types": ["node"],
+		"moduleResolution": "Bundler",
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": false,
+		"noEmit": true,
+		"allowJs": false,
+		"incremental": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"plugins": [
+			{
+				"name": "next"
+			}
+		],
+		"skipLibCheck": true,
+		"strict": true,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": false,
+		"noUncheckedSideEffectImports": true,
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"esModuleInterop": true
+	}
+}
