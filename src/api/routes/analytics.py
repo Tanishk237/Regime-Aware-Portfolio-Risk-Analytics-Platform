@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.analytics import AnalyticsService
-from src.api.dependencies import get_or_create_default_user
+from src.api.dependencies import get_current_user
 from src.api.routes.market import market_service
 from src.api.schemas_analytics import (
     RegimeAnalyticsRequest,
@@ -22,13 +22,6 @@ from src.database.models import User
 router = APIRouter(prefix="/analytics")
 
 
-def current_user(
-    db: Session = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> User:
-    return get_or_create_default_user(db, settings)
-
-
 @router.get("/portfolio/{portfolio_id}/risk", response_model=RiskAnalyticsResponse)
 def risk_analytics(
     portfolio_id: int,
@@ -40,7 +33,7 @@ def risk_analytics(
     persist: bool = Query(default=True),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> RiskAnalyticsResponse:
     payload = AnalyticsService(
         db,
@@ -65,7 +58,7 @@ def regime_analytics(
     persist: bool = Query(default=True),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> RegimeAnalyticsResponse:
     result = AnalyticsService(
         db,

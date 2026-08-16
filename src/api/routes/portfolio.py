@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_or_create_default_user
+from src.api.dependencies import get_current_user
 from src.api.schemas_portfolio import (
     PortfolioCreate,
     PortfolioRead,
@@ -18,7 +18,6 @@ from src.api.schemas_portfolio import (
     TradeUpdate,
     PortfolioReturnRead,
 )
-from src.config import Settings, get_settings
 from src.database import get_db
 from src.database.models import User
 from src.portfolio.portfolio_service import PortfolioService
@@ -29,20 +28,10 @@ router = APIRouter(
 )
 
 
-def current_user(
-    db: Session = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> User:
-    return get_or_create_default_user(
-        db,
-        settings,
-    )
-
-
 @router.get("", response_model=list[PortfolioRead])
 def list_portfolios(
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> list:
     return PortfolioService(db).list_portfolios(user)
 
@@ -51,7 +40,7 @@ def list_portfolios(
 def create_portfolio(
     payload: PortfolioCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> object:
     return PortfolioService(db).create_portfolio(
         user,
@@ -70,7 +59,7 @@ async def upload_portfolio(
     benchmark: str = Form(default="NIFTY50"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> PortfolioUploadResponse:
     csv_text = (
         await file.read()
@@ -95,7 +84,7 @@ async def upload_portfolio(
 def get_portfolio(
     portfolio_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> object:
     return PortfolioService(db).get_portfolio(
         user,
@@ -108,7 +97,7 @@ def update_portfolio(
     portfolio_id: int,
     payload: PortfolioUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> object:
     provided_fields = payload.model_fields_set
 
@@ -127,7 +116,7 @@ def update_portfolio(
 def delete_portfolio(
     portfolio_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> None:
     PortfolioService(db).delete_portfolio(
         user,
@@ -139,7 +128,7 @@ def delete_portfolio(
 def list_trades(
     portfolio_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> list:
     return PortfolioService(db).list_trades(
         user,
@@ -152,7 +141,7 @@ def add_trade(
     portfolio_id: int,
     payload: TradeCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> object:
     return PortfolioService(db).add_trade(
         user,
@@ -176,7 +165,7 @@ def update_trade(
     trade_id: int,
     payload: TradeUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> object:
     return PortfolioService(db).update_trade(
         user,
@@ -191,7 +180,7 @@ def delete_trade(
     portfolio_id: int,
     trade_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> None:
     PortfolioService(db).delete_trade(
         user,
@@ -204,7 +193,7 @@ def delete_trade(
 def list_positions(
     portfolio_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> list:
     return PortfolioService(db).list_positions(
         user,
@@ -216,7 +205,7 @@ def list_positions(
 def list_returns(
     portfolio_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> list:
     return PortfolioService(db).list_returns(
         user,
@@ -228,7 +217,7 @@ def list_returns(
 def portfolio_summary(
     portfolio_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(current_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     return PortfolioService(db).build_summary(
         user,
