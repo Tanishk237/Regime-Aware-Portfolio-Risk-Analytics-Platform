@@ -25,6 +25,21 @@ def build_client(tmp_path, *, fii_dii_csv_path: str = "data/external/fii_dii.csv
     return TestClient(create_app(settings))
 
 
+def authenticate(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": "analytics-test@example.com",
+            "password": "strong-password",
+            "full_name": "Analytics Test User",
+        },
+    )
+    assert response.status_code == 201
+    client.headers.update(
+        {"Authorization": f"Bearer {response.json()['access_token']}"}
+    )
+
+
 def create_portfolio_with_trades(client: TestClient) -> int:
     portfolio = client.post(
         "/api/v1/portfolio",
@@ -92,6 +107,7 @@ def write_flow_csv(tmp_path, days: int = 45) -> str:
 
 def test_risk_analytics_returns_metrics_series_pnl_and_persists(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         portfolio_id = create_portfolio_with_trades(client)
         seed_market_prices(client)
 
@@ -130,6 +146,7 @@ def test_regime_analytics_returns_current_regime_history_and_persists(tmp_path, 
     monkeypatch.setattr(YahooFinanceProvider, "get_india_vix", lambda self, start_date, end_date: vix)
 
     with build_client(tmp_path, fii_dii_csv_path=flow_path) as client:
+        authenticate(client)
         portfolio_id = create_portfolio_with_trades(client)
         seed_market_prices(client)
 
@@ -161,6 +178,7 @@ def test_regime_analytics_returns_current_regime_history_and_persists(tmp_path, 
 
 def test_risk_analytics_rejects_invalid_date_range(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         portfolio_id = create_portfolio_with_trades(client)
 
         response = client.get(

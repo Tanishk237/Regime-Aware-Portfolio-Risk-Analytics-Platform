@@ -23,6 +23,21 @@ def build_client(tmp_path) -> TestClient:
     )
 
 
+def authenticate(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": "portfolio-test@example.com",
+            "password": "strong-password",
+            "full_name": "Portfolio Test User",
+        },
+    )
+    assert response.status_code == 201
+    client.headers.update(
+        {"Authorization": f"Bearer {response.json()['access_token']}"}
+    )
+
+
 def create_portfolio(client: TestClient) -> dict:
     response = client.post(
         "/api/v1/portfolio",
@@ -40,6 +55,7 @@ def create_portfolio(client: TestClient) -> dict:
 
 def test_portfolio_crud_flow(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         created = create_portfolio(client)
 
         list_response = client.get("/api/v1/portfolio")
@@ -75,6 +91,7 @@ def test_portfolio_crud_flow(tmp_path):
 
 def test_manual_trade_entry_edit_delete_positions_and_summary(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         portfolio = create_portfolio(client)
         portfolio_id = portfolio["id"]
 
@@ -150,6 +167,7 @@ def test_manual_trade_entry_edit_delete_positions_and_summary(tmp_path):
 
 def test_sell_transaction_updates_quantity_and_realized_pnl(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         portfolio = create_portfolio(client)
         portfolio_id = portfolio["id"]
 
@@ -188,6 +206,7 @@ def test_sell_transaction_updates_quantity_and_realized_pnl(tmp_path):
 
 def test_sell_transaction_cannot_exceed_current_quantity(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         portfolio = create_portfolio(client)
         portfolio_id = portfolio["id"]
 
@@ -214,6 +233,7 @@ def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
     )
 
     with build_client(tmp_path) as client:
+        authenticate(client)
         response = client.post(
             "/api/v1/portfolio/upload",
             data={
@@ -245,6 +265,7 @@ def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
 
 def test_csv_upload_validates_required_columns(tmp_path):
     with build_client(tmp_path) as client:
+        authenticate(client)
         response = client.post(
             "/api/v1/portfolio/upload",
             data={"name": "Bad Upload"},
