@@ -5,3 +5,8 @@ export function clearRapraLocalStorage(): void {
 		if (key.startsWith('rapra.')) window.localStorage.removeItem(key);
 	}
 }
+
+export function clearLegacyAccessToken(): void {
+	if (typeof window === 'undefined') return;
+	window.localStorage.removeItem('rapra.auth.accessToken');
+}

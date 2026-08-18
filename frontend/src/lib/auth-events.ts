@@ -1,4 +1,4 @@
-import { clearAccessToken } from '@/lib/token-storage';
+import { clearLegacyAccessToken } from '@/lib/storage';
 
 export const AUTH_FAILURE_EVENT = 'rapra:auth-failure';
 
@@ -16,6 +16,6 @@ export function isAuthFailure(status: number, code?: string): boolean {
 
 export function publishAuthFailure(): void {
 	if (typeof window === 'undefined') return;
-	clearAccessToken();
+	clearLegacyAccessToken();
 	window.dispatchEvent(new Event(AUTH_FAILURE_EVENT));
 }

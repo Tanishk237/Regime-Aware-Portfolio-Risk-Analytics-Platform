@@ -9,7 +9,7 @@ Shared frontend logic lives here:
 - `analytics-derive.ts`: derived health score and recommendation logic.
 - `format.ts`: display formatting for currency, dates, percentages, and series.
 - `auth.tsx`: browser session state backed by backend HttpOnly cookies.
-- `token-storage.ts`: legacy local token cleanup helper.
+- `storage.ts`: scoped local storage cleanup helpers.
 - `portfolio-context.tsx`: selected portfolio state.
 
 Keep page files focused on workflow/UI. Put reusable calculations here.

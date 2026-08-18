@@ -41,7 +41,6 @@ const requiredPaths = [
 	'src/lib/api/system.ts',
 	'src/lib/queries.ts',
 	'src/lib/storage.ts',
-	'src/lib/token-storage.ts',
 	'src/lib/types.ts'
 ];
 

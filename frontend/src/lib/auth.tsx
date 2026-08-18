@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { login, logout, me, signup, type AuthResponse, type AuthUser } from '@/lib/api/auth';
 import { AUTH_FAILURE_EVENT } from '@/lib/auth-events';
-import { clearAccessToken } from '@/lib/token-storage';
+import { clearLegacyAccessToken } from '@/lib/storage';
 
 const STORAGE_KEY = 'rapra.auth.user';
 
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 				setUser(next);
 			})
 			.catch(() => {
-				clearAccessToken();
+				clearLegacyAccessToken();
 				clearStoredUser();
 				setUser(null);
 			})
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 	useEffect(() => {
 		const handleAuthFailure = () => {
-			clearAccessToken();
+			clearLegacyAccessToken();
 			clearStoredUser();
 			setUser(null);
 		};
@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	const persistAuth = useCallback((response: AuthResponse) => {
-		clearAccessToken();
+		clearLegacyAccessToken();
 		const next = toAppUser(response.user);
 		window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 		setUser(next);
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		} catch {
 			// Local cleanup still happens if the backend is unreachable.
 		}
-		clearAccessToken();
+		clearLegacyAccessToken();
 		clearStoredUser();
 		setUser(null);
 	}, []);
