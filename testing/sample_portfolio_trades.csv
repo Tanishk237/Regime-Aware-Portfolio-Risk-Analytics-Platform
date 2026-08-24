@@ -1,0 +1,11 @@
+ticker,transaction_type,quantity,price,transaction_date,broker,fees,taxes,currency,notes
+RELIANCE.NS,BUY,10,2450.50,2024-01-15,Zerodha,20,5,INR,Initial Reliance position
+INFY.NS,BUY,15,1510.25,2024-02-05,Zerodha,20,5,INR,Core IT holding
+HDFCBANK.NS,BUY,12,1425.75,2024-02-20,Zerodha,20,5,INR,Private bank allocation
+TCS.NS,BUY,6,3820.00,2024-03-12,Zerodha,20,5,INR,Large cap IT exposure
+ICICIBANK.NS,BUY,18,1012.40,2024-04-08,Zerodha,20,5,INR,Banking allocation
+SBIN.NS,BUY,25,742.30,2024-05-10,Zerodha,20,5,INR,PSU bank position
+INFY.NS,SELL,3,1645.00,2024-06-18,Zerodha,20,5,INR,Partial profit booking
+RELIANCE.NS,BUY,4,2860.00,2024-07-22,Zerodha,20,5,INR,Added on strength
+TCS.NS,SELL,1,4110.00,2024-08-14,Zerodha,20,5,INR,Small rebalance
+MARUTI.NS,BUY,2,12250.00,2024-09-03,Zerodha,20,5,INR,Auto sector exposure
