@@ -50,6 +50,10 @@ class PortfolioPositionService:
         for position in positions:
             self.db.refresh(position)
 
+        self._refresh_position_market_values(portfolio_id)
+        for position in positions:
+            self.db.refresh(position)
+
         return positions
 
     def list_positions(
@@ -70,6 +74,15 @@ class PortfolioPositionService:
             positions = self.recalculate_positions(
                 user,
                 portfolio_id,
+            )
+        else:
+            self._refresh_position_market_values(portfolio_id)
+            positions = list(
+                self.db.scalars(
+                    select(Position)
+                    .where(Position.portfolio_id == portfolio_id)
+                    .order_by(Position.ticker)
+                )
             )
 
         return positions

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -62,11 +62,12 @@ class YahooFinanceProvider(MarketDataProvider):
         end_date: Optional[date] = None,
     ) -> pd.DataFrame:
         query = tickers if len(tickers) > 1 else tickers[0]
+        inclusive_end = end_date + timedelta(days=1) if end_date is not None else None
         return self._retry(
             lambda: yf.download(
                 query,
                 start=start_date,
-                end=end_date,
+                end=inclusive_end,
                 auto_adjust=True,
                 progress=False,
                 threads=False,
@@ -100,11 +101,12 @@ class YahooFinanceProvider(MarketDataProvider):
         start_date: date,
         end_date: Optional[date] = None,
     ) -> pd.DataFrame:
+        inclusive_end = end_date + timedelta(days=1) if end_date is not None else None
         data = self._retry(
             lambda: yf.download(
                 "^INDIAVIX",
                 start=start_date,
-                end=end_date,
+                end=inclusive_end,
                 auto_adjust=True,
                 progress=False,
                 threads=False,

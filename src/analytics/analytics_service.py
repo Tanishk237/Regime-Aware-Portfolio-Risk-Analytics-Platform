@@ -2,6 +2,7 @@ from datetime import date
 from typing import Optional
 
 import pandas as pd
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.api.errors import AppError
@@ -9,7 +10,7 @@ from src.analytics.regime_service import AnalyticsRegimeService
 from src.analytics.returns_repository import AnalyticsReturnsRepository
 from src.analytics.risk_service import AnalyticsRiskService
 from src.analytics.utils import AnalyticsUtils
-from src.database.models import Portfolio, User
+from src.database.models import Portfolio, Trade, User
 from src.market import MarketDataService
 from src.portfolio.portfolio_service import PortfolioService
 
@@ -43,8 +44,9 @@ class AnalyticsService(
         rolling_window: int = 20,
         persist: bool = True,
     ) -> dict:
-        self._validate_date_range(start_date, end_date)
         portfolio = PortfolioService(self.db).get_portfolio(user, portfolio_id)
+        start_date = start_date or self._portfolio_first_trade_date(portfolio.id)
+        self._validate_date_range(start_date, end_date)
         returns = self.get_or_build_returns(
             user,
             portfolio,
@@ -90,8 +92,9 @@ class AnalyticsService(
         weights: Optional[list[float]] = None,
         persist: bool = True,
     ) -> dict:
-        self._validate_date_range(start_date, end_date)
         portfolio = PortfolioService(self.db).get_portfolio(user, portfolio_id)
+        start_date = start_date or self._portfolio_first_trade_date(portfolio.id)
+        self._validate_date_range(start_date, end_date)
         positions = PortfolioService(self.db).list_positions(user, portfolio.id)
         tickers = [position.ticker for position in positions if position.quantity > 0]
         if not tickers:
@@ -183,3 +186,14 @@ class AnalyticsService(
             self._persist_returns(portfolio.id, returns)
 
         return returns
+
+    def _portfolio_first_trade_date(self, portfolio_id: int) -> date:
+        first_trade_date = self.db.scalar(
+            select(func.min(Trade.transaction_date)).where(
+                Trade.portfolio_id == portfolio_id
+            )
+        )
+        if first_trade_date is not None:
+            return first_trade_date
+        portfolio = self.db.get(Portfolio, portfolio_id)
+        return portfolio.created_at.date() if portfolio is not None else date.today()

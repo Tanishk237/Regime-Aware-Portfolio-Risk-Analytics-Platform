@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -250,18 +250,8 @@ class MarketDataFetchService:
         stored: list[dict],
     ) -> list[dict]:
         records = []
-        stored_by_ticker: dict[str, list[dict]] = {ticker: [] for ticker in tickers}
-        for record in stored:
-            stored_by_ticker.setdefault(record["ticker"], []).append(record)
 
         for ticker in tickers:
-            existing = stored_by_ticker.get(ticker, [])
-            missing_start = start_date
-            if existing:
-                latest = max(record["date"] for record in existing)
-                missing_start = max(start_date, latest + timedelta(days=1))
-            if end_date is not None and missing_start > end_date:
-                continue
-            raw_prices = self.provider.get_ohlcv([ticker], missing_start, end_date)
+            raw_prices = self.provider.get_ohlcv([ticker], start_date, end_date)
             records.extend(self._normalize_ohlcv(raw_prices, [ticker]))
         return records

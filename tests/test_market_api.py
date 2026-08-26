@@ -346,6 +346,76 @@ def test_provider_failure_falls_back_to_stored_historical_prices(tmp_path):
             db.close()
 
 
+def test_historical_prices_backfill_requested_range_when_only_latest_is_stored(tmp_path):
+    class BackfillProvider(CountingProvider):
+        def __init__(self):
+            super().__init__()
+            self.requests = []
+
+        def get_ohlcv(self, tickers, start_date, end_date=None):
+            self.requests.append((tickers, start_date, end_date))
+            close = pd.Series(
+                [100.0, 101.0, 102.0],
+                index=pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+            )
+            return pd.DataFrame(
+                {
+                    "Open": close,
+                    "High": close + 1,
+                    "Low": close - 1,
+                    "Close": close,
+                    "Volume": 1000,
+                },
+                index=close.index,
+            )
+
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        provider = BackfillProvider()
+        try:
+            db.add(
+                MarketPrice(
+                    ticker="RELIANCE.NS",
+                    date=date(2024, 1, 3),
+                    open=102,
+                    high=103,
+                    low=101,
+                    close=102,
+                    volume=1000,
+                )
+            )
+            db.commit()
+
+            service = MarketDataService(
+                db,
+                provider=provider,
+                cache=InMemoryMarketDataCache(),
+            )
+            records = service.get_historical_prices(
+                ["RELIANCE.NS"],
+                date(2024, 1, 1),
+                date(2024, 1, 3),
+            )
+
+            assert provider.requests == [
+                (["RELIANCE.NS"], date(2024, 1, 1), date(2024, 1, 3))
+            ]
+            assert len(records) == 3
+            assert {record["date"] for record in records} == {
+                date(2024, 1, 1),
+                date(2024, 1, 2),
+                date(2024, 1, 3),
+            }
+            assert (
+                db.query(MarketPrice)
+                .filter(MarketPrice.ticker == "RELIANCE.NS")
+                .count()
+                == 3
+            )
+        finally:
+            db.close()
+
+
 def test_invalid_provider_prices_are_rejected(tmp_path):
     class InvalidPriceProvider(CountingProvider):
         def get_ohlcv(self, tickers, start_date, end_date=None):

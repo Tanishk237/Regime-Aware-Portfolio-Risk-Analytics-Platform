@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 import sys
 
@@ -7,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.main import create_app
 from src.config.settings import Settings
+from src.database.models import MarketPrice
 
 
 def build_client(tmp_path) -> TestClient:
@@ -163,6 +165,52 @@ def test_manual_trade_entry_edit_delete_positions_and_summary(tmp_path):
         positions = client.get(f"/api/v1/portfolio/{portfolio_id}/positions").json()
         assert positions[0]["quantity"] == 10
         assert positions[0]["cost_basis"] == 25015
+
+
+def test_positions_and_summary_are_enriched_from_market_prices(tmp_path):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio = create_portfolio(client)
+        portfolio_id = portfolio["id"]
+
+        response = client.post(
+            f"/api/v1/portfolio/{portfolio_id}/trades",
+            json={
+                "ticker": "RELIANCE.NS",
+                "transaction_type": "BUY",
+                "quantity": 10,
+                "transaction_date": "2024-01-01",
+                "price": 100,
+            },
+        )
+        assert response.status_code == 201
+
+        db = client.app.state.session_factory()
+        try:
+            db.add(
+                MarketPrice(
+                    ticker="RELIANCE.NS",
+                    date=date(2024, 1, 2),
+                    open=120,
+                    high=121,
+                    low=119,
+                    close=120,
+                    volume=1000,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        positions = client.get(f"/api/v1/portfolio/{portfolio_id}/positions").json()
+        assert positions[0]["current_price"] == 120
+        assert positions[0]["market_value"] == 1200
+        assert positions[0]["unrealized_pnl"] == 200
+        assert positions[0]["market_weight"] == 1
+
+        summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
+        assert summary["current_value"] == 1200
+        assert summary["unrealized_profit"] == 200
 
 
 def test_sell_transaction_updates_quantity_and_realized_pnl(tmp_path):

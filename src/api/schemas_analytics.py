@@ -59,7 +59,7 @@ class RiskAnalyticsResponse(BaseModel):
 
 
 class RegimeAnalyticsRequest(BaseModel):
-    start_date: date
+    start_date: Optional[date] = None
     end_date: Optional[date] = None
     weights: Optional[list[float]] = None
 
