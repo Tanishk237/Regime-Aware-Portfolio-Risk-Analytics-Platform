@@ -1,4 +1,4 @@
-import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Info, Inbox, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,31 @@ export function ErrorState({
 					<RefreshCw className="size-3.5" /> Retry
 				</Button>
 			) : null}
+		</div>
+	);
+}
+
+export function WarningState({
+	title,
+	description,
+	className
+}: {
+	title: string;
+	description?: string;
+	className?: string;
+}) {
+	return (
+		<div
+			className={cn(
+				'border-warning/30 bg-warning-muted/60 flex items-start gap-2.5 rounded-lg border p-4',
+				className
+			)}
+		>
+			<Info className="text-warning mt-0.5 size-4 shrink-0" />
+			<div>
+				<p className="text-sm font-semibold">{title}</p>
+				{description ? <p className="text-muted-foreground mt-1 text-sm">{description}</p> : null}
+			</div>
 		</div>
 	);
 }

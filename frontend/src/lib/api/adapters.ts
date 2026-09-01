@@ -252,7 +252,10 @@ export function adaptRegime(value: unknown): RegimeAnalytics {
 		regime_statistics: statistics,
 		durations,
 		regime_duration: durations,
-		fallback_used: Boolean(asRecord(row['feature_metadata'])['fallback_used'])
+		fallback_used: Boolean(
+			asRecord(row['feature_metadata'])['fallback_used'] ||
+			asRecord(row['feature_metadata'])['model_fallback_used']
+		)
 	};
 }
 

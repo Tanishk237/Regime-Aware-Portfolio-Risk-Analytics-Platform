@@ -103,7 +103,10 @@ class MarketDataPersistence:
     ) -> bool:
         if not records or end_date is None:
             return False
-        dates = [record["date"] for record in records]
+        dates = [
+            record["date"].date() if hasattr(record["date"], "date") else record["date"]
+            for record in records
+        ]
         return min(dates) <= start_date and max(dates) >= end_date
 
     def _upsert_market_prices(self, records: list[dict]) -> None:

@@ -120,6 +120,13 @@ class AnalyticsService(
         if persist:
             self._persist_regime_predictions(portfolio.id, regime_payload["history"])
 
+        feature_metadata = feature_payload["metadata"]
+        feature_metadata["model_name"] = regime_payload["model_name"]
+        feature_metadata["model_fallback_used"] = regime_payload["model_fallback_used"]
+        feature_metadata["fallback_used"] = bool(
+            feature_metadata.get("fallback_used") or regime_payload["model_fallback_used"]
+        )
+
         return {
             "portfolio_id": portfolio.id,
             "tickers": tickers,
@@ -131,7 +138,7 @@ class AnalyticsService(
             "regime_statistics": regime_payload["statistics"],
             "regime_duration": regime_payload["duration"],
             "state_labels": regime_payload["state_labels"],
-            "feature_metadata": feature_payload["metadata"],
+            "feature_metadata": feature_metadata,
         }
 
     def get_or_build_returns(

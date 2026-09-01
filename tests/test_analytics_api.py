@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.main import create_app
+from src.api.errors import AppError
 from src.config.settings import Settings
 from src.database.models import MarketPrice, RegimePrediction, RiskMetric
 from src.market.cache import market_data_cache
@@ -168,12 +169,81 @@ def test_regime_analytics_returns_current_regime_history_and_persists(tmp_path, 
         assert len(payload["regime_statistics"]) > 0
         assert len(payload["regime_duration"]) > 0
         assert payload["state_labels"]
+        assert payload["feature_metadata"]["model_name"] in {"hmm", "deterministic_fallback"}
+        assert isinstance(payload["feature_metadata"]["model_fallback_used"], bool)
 
         db = client.app.state.session_factory()
         try:
             assert db.query(RegimePrediction).count() == len(payload["regime_history"])
         finally:
             db.close()
+
+
+def test_regime_analytics_uses_price_only_features_when_external_signals_fail(tmp_path, monkeypatch):
+    def unavailable_vix(self, start_date, end_date):
+        raise AppError(
+            "Market data provider is temporarily unavailable.",
+            code="MARKET_DATA_UNAVAILABLE",
+            status_code=502,
+        )
+
+    monkeypatch.setattr(YahooFinanceProvider, "get_india_vix", unavailable_vix)
+
+    with build_client(tmp_path, fii_dii_csv_path=str(tmp_path / "missing-flows.csv")) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio_with_trades(client)
+        seed_market_prices(client)
+
+        response = client.post(
+            f"/api/v1/analytics/portfolio/{portfolio_id}/regime",
+            json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-02-14",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["current_regime"] in {"Bull", "Bear", "High Volatility"}
+        assert len(payload["regime_history"]) > 0
+        assert len(payload["transition_matrix"]) == 3
+        assert payload["feature_metadata"]["fallback_used"] is True
+        assert payload["feature_metadata"]["model_name"] in {"hmm", "deterministic_fallback"}
+        assert any(
+            "India VIX unavailable" in warning
+            for warning in payload["feature_metadata"]["warnings"]
+        )
+        assert any(
+            "FII/DII flows unavailable" in warning
+            for warning in payload["feature_metadata"]["warnings"]
+        )
+
+
+def test_regime_analytics_rejects_too_short_feature_history(tmp_path, monkeypatch):
+    def unavailable_vix(self, start_date, end_date):
+        raise AppError(
+            "Market data provider is temporarily unavailable.",
+            code="MARKET_DATA_UNAVAILABLE",
+            status_code=502,
+        )
+
+    monkeypatch.setattr(YahooFinanceProvider, "get_india_vix", unavailable_vix)
+
+    with build_client(tmp_path, fii_dii_csv_path=str(tmp_path / "missing-flows.csv")) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio_with_trades(client)
+        seed_market_prices(client, days=3)
+
+        response = client.post(
+            f"/api/v1/analytics/portfolio/{portfolio_id}/regime",
+            json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-03",
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INSUFFICIENT_REGIME_FEATURES"
 
 
 def test_risk_analytics_rejects_invalid_date_range(tmp_path):

@@ -1,5 +1,5 @@
-from src.api.main import create_app
+"""FastAPI package.
 
-__all__ = [
-    "create_app",
-]
+Import application factories from ``src.api.main`` directly. Keeping this
+package initializer side-effect free avoids circular imports in service code.
+"""

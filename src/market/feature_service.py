@@ -9,7 +9,6 @@ from fastapi import status
 
 from src.api.errors import AppError
 from src.features.feature_builder import FeatureBuilder
-from src.ingestion.data_merger import DataMerger
 from src.ingestion.fii_dii_data import FIIDIIDataFetcher
 from src.market.validators import MarketDataValidator
 
@@ -36,6 +35,7 @@ class MarketFeatureService:
 
         weights = self._normalize_weights(weights) if weights is not None else None
 
+        warnings = []
         try:
             price_records = self.get_historical_prices(
                 normalized_tickers,
@@ -45,15 +45,37 @@ class MarketFeatureService:
             )
             prices = self._price_records_to_frame(price_records)
             returns = prices.pct_change().dropna()
-            vix_records = self.get_india_vix(start_date, end_date, window=5, persist=persist)
-            vix = self._vix_records_to_frame(vix_records)
-            flows = self._flow_frame_for_features(
+            if returns.empty:
+                raise AppError(
+                    "Not enough price history was available to build market features.",
+                    code="INSUFFICIENT_MARKET_FEATURE_DATA",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+
+            vix = self._optional_vix_frame(
+                start_date=start_date,
+                end_date=end_date,
+                persist=persist,
+                warnings=warnings,
+            )
+            flows = self._optional_flow_frame(
                 filepath=fii_dii_path,
                 start_date=start_date,
                 end_date=end_date,
+                warnings=warnings,
             )
-            merged = DataMerger.clean(DataMerger.merge(returns, vix, flows))
+            merged = self._merge_feature_inputs(returns, vix, flows)
             feature_matrix, metadata = FeatureBuilder().build(merged, weights=weights)
+            if feature_matrix.empty:
+                raise AppError(
+                    "Not enough clean feature rows were available for regime analytics.",
+                    code="INSUFFICIENT_REGIME_FEATURES",
+                    status_code=422,
+                    details={
+                        "price_return_rows": len(returns),
+                        "merged_rows": len(merged),
+                    },
+                )
         except AppError:
             raise
         except Exception as exc:
@@ -61,6 +83,10 @@ class MarketFeatureService:
 
         validation = self._json_ready(MarketDataValidator.validate_feature_matrix(feature_matrix))
         metadata = self._json_ready(metadata)
+        metadata["warnings"] = warnings
+        metadata["fallback_used"] = bool(warnings)
+        metadata["price_rows"] = len(price_records)
+        metadata["merged_rows"] = len(merged)
 
         records = [
             {
@@ -98,6 +124,58 @@ class MarketFeatureService:
             return pd.DataFrame()
         frame["date"] = pd.to_datetime(frame["date"])
         return frame.set_index("date")[["vix", "vix_change"]].rename(columns={"vix_change": "vix_change_5"})
+
+    def _optional_vix_frame(
+        self,
+        *,
+        start_date: date,
+        end_date: Optional[date],
+        persist: bool,
+        warnings: list[str],
+    ) -> pd.DataFrame:
+        try:
+            vix_records = self.get_india_vix(start_date, end_date, window=5, persist=persist)
+            return self._vix_records_to_frame(vix_records)
+        except AppError as exc:
+            warnings.append(f"India VIX unavailable: {exc.message}")
+            return pd.DataFrame()
+        except Exception as exc:
+            warnings.append(f"India VIX unavailable: {exc}")
+            return pd.DataFrame()
+
+    def _optional_flow_frame(
+        self,
+        *,
+        filepath: Optional[str],
+        start_date: date,
+        end_date: Optional[date],
+        warnings: list[str],
+    ) -> pd.DataFrame:
+        try:
+            return self._flow_frame_for_features(
+                filepath=filepath,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except AppError as exc:
+            warnings.append(f"FII/DII flows unavailable: {exc.message}")
+            return pd.DataFrame()
+        except Exception as exc:
+            warnings.append(f"FII/DII flows unavailable: {exc}")
+            return pd.DataFrame()
+
+    @staticmethod
+    def _merge_feature_inputs(
+        returns: pd.DataFrame,
+        vix: pd.DataFrame,
+        flows: pd.DataFrame,
+    ) -> pd.DataFrame:
+        merged = returns.sort_index().copy()
+        for frame in (vix, flows):
+            if not frame.empty:
+                merged = merged.join(frame.sort_index(), how="left")
+        merged = merged.replace([float("inf"), float("-inf")], pd.NA).ffill().dropna(how="all")
+        return merged
 
     def _flow_frame_for_features(
         self,

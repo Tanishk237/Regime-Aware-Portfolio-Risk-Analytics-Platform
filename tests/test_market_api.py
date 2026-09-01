@@ -138,6 +138,28 @@ def test_india_vix_history_persists_snapshot(tmp_path, monkeypatch):
             db.close()
 
 
+def test_stored_vix_coverage_accepts_timestamp_dates(tmp_path):
+    settings = Settings(
+        environment="test",
+        database_url=f"sqlite:///{tmp_path / 'vix.db'}",
+        run_migrations_on_startup=True,
+    )
+    with TestClient(create_app(settings)) as client:
+        db = client.app.state.session_factory()
+        try:
+            service = MarketDataService(db)
+            assert service._stored_vix_covers_request(
+                [
+                    {"date": pd.Timestamp("2024-01-01"), "vix": 12.0},
+                    {"date": pd.Timestamp("2024-01-05"), "vix": 13.0},
+                ],
+                date(2024, 1, 1),
+                date(2024, 1, 5),
+            )
+        finally:
+            db.close()
+
+
 def test_fii_dii_flows_load_validate_and_persist(tmp_path):
     csv_path = tmp_path / "fii_dii.csv"
     csv_path.write_text(

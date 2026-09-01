@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 
 from src.regime.predict_regime import RegimePredictor
 from src.regime.probability_engine import RegimeProbabilityEngine
 
 
+logger = logging.getLogger(__name__)
+
+
 class AnalyticsRegimeService:
     def _predict_regimes(self, feature_matrix: pd.DataFrame) -> dict:
+        model_fallback_used = False
         try:
             predictor = RegimePredictor(model_dir=self.model_dir)
             probabilities = RegimeProbabilityEngine(model_dir=self.model_dir).probability_dataframe(feature_matrix)
             prediction_df = predictor.build_prediction_dataframe(feature_matrix)
             transition_matrix = predictor.transition_matrix()
             state_labels = predictor.state_labels
-        except Exception:
+        except Exception as exc:
+            model_fallback_used = True
+            logger.warning("HMM regime model unavailable; using deterministic fallback labeller. %s", exc)
             prediction_df, probabilities, transition_matrix, state_labels = self._fallback_regime_prediction(feature_matrix)
 
         history = []
@@ -41,6 +49,8 @@ class AnalyticsRegimeService:
             "statistics": self._regime_statistics(feature_matrix, prediction_df),
             "duration": self._regime_duration(prediction_df["state"]),
             "state_labels": {str(key): value for key, value in state_labels.items()},
+            "model_fallback_used": model_fallback_used,
+            "model_name": "deterministic_fallback" if model_fallback_used else "hmm",
         }
 
     def _fallback_regime_prediction(self, feature_matrix: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, str]]:

@@ -10,7 +10,12 @@ import { RegimeBadge } from '@/components/domain/finance';
 import { MetricCard } from '@/components/common/metric-card';
 import { RequirePortfolio } from '@/components/layout/require-portfolio';
 import { SeriesLineChart } from '@/components/charts/series-charts';
-import { EmptyState, ErrorState, MetricGridSkeleton } from '@/components/common/states';
+import {
+	EmptyState,
+	ErrorState,
+	MetricGridSkeleton,
+	WarningState
+} from '@/components/common/states';
 import { PageHeader } from '@/components/layout/top-bar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -46,6 +51,10 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 
 	const matrix = data?.transition_matrix ?? [];
 	const confidence = data?.confidence ?? data?.probability;
+	const metadata = data?.feature_metadata ?? {};
+	const metadataWarnings = Array.isArray(metadata['warnings']) ? metadata['warnings'] : [];
+	const modelName = typeof metadata['model_name'] === 'string' ? metadata['model_name'] : undefined;
+	const isPartialResult = Boolean(data?.fallback_used || metadataWarnings.length);
 
 	const statColumns: Array<Column<StatRow>> = [
 		{
@@ -152,6 +161,19 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 			{regime.isError ? (
 				<ErrorState error={regime.error} onRetry={() => void regime.refetch()} />
 			) : null}
+			{!regime.isError && isPartialResult ? (
+				<WarningState
+					title="Regime result is using available data"
+					description={[
+						modelName === 'deterministic_fallback'
+							? 'The trained HMM was unavailable, so deterministic regime labelling was used.'
+							: null,
+						...metadataWarnings.map((warning) => String(warning))
+					]
+						.filter(Boolean)
+						.join(' ')}
+				/>
+			) : null}
 
 			{regime.isLoading ? (
 				<MetricGridSkeleton count={5} />
@@ -160,7 +182,7 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 					<MetricCard
 						label="Current regime"
 						value={<RegimeBadge label={data?.current_regime} size="lg" />}
-						hint={data?.fallback_used ? 'fallback labeller' : 'HMM model'}
+						hint={modelName === 'deterministic_fallback' ? 'fallback labeller' : 'HMM model'}
 					/>
 					<MetricCard label="Confidence" value={formatPercent(confidence)} />
 					<MetricCard label="Hidden state" value={data?.current_state ?? '-'} />
