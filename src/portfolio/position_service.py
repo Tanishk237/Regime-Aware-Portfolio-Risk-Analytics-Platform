@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from datetime import date
+
+from sqlalchemy import delete, func, select
 
 from src.api.errors import AppError
-from src.database.models import PortfolioReturn, Position, Trade, User
+from src.database.models import MarketPrice, Portfolio, PortfolioReturn, Position, Trade, User
 
 
 class PortfolioPositionService:
@@ -92,14 +94,55 @@ class PortfolioPositionService:
         user: User,
         portfolio_id: int,
     ) -> list[PortfolioReturn]:
-        self.get_portfolio(user, portfolio_id)
+        portfolio = self.get_portfolio(user, portfolio_id)
+        returns = self._stored_returns(portfolio_id)
+        if returns:
+            return returns
 
+        self._build_missing_returns(user, portfolio)
+        return self._stored_returns(portfolio_id)
+
+    def _stored_returns(self, portfolio_id: int) -> list[PortfolioReturn]:
         return list(
             self.db.scalars(
                 select(PortfolioReturn)
                 .where(PortfolioReturn.portfolio_id == portfolio_id)
                 .order_by(PortfolioReturn.date)
             )
+        )
+
+    def _build_missing_returns(self, user: User, portfolio: Portfolio) -> None:
+        from src.analytics import AnalyticsService
+
+        first_trade_date = self.db.scalar(
+            select(func.min(Trade.transaction_date)).where(
+                Trade.portfolio_id == portfolio.id
+            )
+        )
+        tickers = list(
+            self.db.scalars(
+                select(Trade.ticker)
+                .where(Trade.portfolio_id == portfolio.id)
+                .distinct()
+            )
+        )
+        latest_price_date = (
+            self.db.scalar(
+                select(func.max(MarketPrice.date)).where(
+                    MarketPrice.ticker.in_(tickers)
+                )
+            )
+            if tickers
+            else None
+        )
+        start_date = first_trade_date or portfolio.created_at.date()
+        end_date = latest_price_date or date.today()
+        AnalyticsService(self.db).build_risk_payload(
+            user,
+            portfolio.id,
+            start_date=start_date,
+            end_date=end_date,
+            persist=True,
         )
 
     def build_summary(
@@ -110,7 +153,7 @@ class PortfolioPositionService:
         portfolio = self.get_portfolio(user, portfolio_id)
         trades = self.list_trades(user, portfolio_id)
         positions = self.list_positions(user, portfolio_id)
-        returns = self.list_returns(user, portfolio_id)
+        returns = self._stored_returns(portfolio_id)
 
         invested_value = sum(
             position.cost_basis

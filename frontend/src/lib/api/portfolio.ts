@@ -99,6 +99,7 @@ export function useTradeMutations(portfolioId?: string) {
 		queryClient.invalidateQueries({ queryKey: keys.trades(portfolioId) });
 		queryClient.invalidateQueries({ queryKey: keys.positions(portfolioId) });
 		queryClient.invalidateQueries({ queryKey: keys.summary(portfolioId) });
+		queryClient.invalidateQueries({ queryKey: keys.returns(portfolioId) });
 		queryClient.invalidateQueries({ queryKey: ['risk', portfolioId] });
 		queryClient.invalidateQueries({ queryKey: ['regime', portfolioId] });
 	};
@@ -128,6 +129,11 @@ export function useCsvUpload() {
 	return useMutation({
 		mutationFn: (formData: FormData) =>
 			api.upload<Record<string, unknown>>('/portfolio/upload', formData),
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.portfolios })
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: keys.portfolios });
+			queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+			queryClient.invalidateQueries({ queryKey: ['risk'] });
+			queryClient.invalidateQueries({ queryKey: ['regime'] });
+		}
 	});
 }

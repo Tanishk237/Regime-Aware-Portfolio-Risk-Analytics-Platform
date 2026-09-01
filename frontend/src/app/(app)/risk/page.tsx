@@ -19,7 +19,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { metric } from '@/lib/analytics-derive';
 import { daysAgo, formatPercent, formatRisk, isoDate, toSeries } from '@/lib/format';
-import { useRisk } from '@/lib/queries';
+import { useReturns, useRisk } from '@/lib/queries';
+import {
+	cumulativeSeriesFromReturns,
+	dailySeriesFromReturns,
+	drawdownSeriesFromCumulative
+} from '@/lib/series';
 
 const METRICS = [
 	{ label: 'Total return', names: ['total_return'], kind: 'pct' },
@@ -58,10 +63,15 @@ function RiskPage({ portfolioId }: { portfolioId: string }) {
 		risk_free_rate: riskFree,
 		rolling_window: window
 	});
+	const returns = useReturns(portfolioId);
 
+	const persistedCumulative = cumulativeSeriesFromReturns(returns.data);
 	const daily = toSeries(risk.data?.series?.daily_returns);
+	const chartDaily = daily.length ? daily : dailySeriesFromReturns(returns.data);
 	const cumulative = toSeries(risk.data?.series?.cumulative_returns);
+	const chartCumulative = cumulative.length ? cumulative : persistedCumulative;
 	const drawdown = toSeries(risk.data?.series?.drawdown);
+	const chartDrawdown = drawdown.length ? drawdown : drawdownSeriesFromCumulative(chartCumulative);
 	const rollingVol = toSeries(risk.data?.series?.rolling_volatility);
 	const rollingRet = toSeries(risk.data?.series?.rolling_returns);
 
@@ -157,14 +167,18 @@ function RiskPage({ portfolioId }: { portfolioId: string }) {
 
 			<div className="grid gap-4 lg:grid-cols-2">
 				<ChartCard title="Cumulative returns">
-					{cumulative.length ? (
-						<SeriesLineChart data={cumulative} />
+					{chartCumulative.length ? (
+						<SeriesLineChart data={chartCumulative} />
 					) : (
 						<EmptyState title="No series" />
 					)}
 				</ChartCard>
 				<ChartCard title="Drawdown">
-					{drawdown.length ? <SeriesAreaChart data={drawdown} /> : <EmptyState title="No series" />}
+					{chartDrawdown.length ? (
+						<SeriesAreaChart data={chartDrawdown} />
+					) : (
+						<EmptyState title="No series" />
+					)}
 				</ChartCard>
 				<ChartCard title={`Rolling volatility (${window}d)`}>
 					{rollingVol.length ? (
@@ -181,7 +195,11 @@ function RiskPage({ portfolioId }: { portfolioId: string }) {
 					)}
 				</ChartCard>
 				<ChartCard title="Daily returns" className="lg:col-span-2">
-					{daily.length ? <SeriesBarChart data={daily} /> : <EmptyState title="No series" />}
+					{chartDaily.length ? (
+						<SeriesBarChart data={chartDaily} />
+					) : (
+						<EmptyState title="No series" />
+					)}
 				</ChartCard>
 			</div>
 		</div>

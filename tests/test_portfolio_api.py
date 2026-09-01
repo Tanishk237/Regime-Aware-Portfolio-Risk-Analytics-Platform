@@ -213,6 +213,55 @@ def test_positions_and_summary_are_enriched_from_market_prices(tmp_path):
         assert summary["unrealized_profit"] == 200
 
 
+def test_returns_endpoint_builds_missing_chart_series_from_market_prices(tmp_path):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio = create_portfolio(client)
+        portfolio_id = portfolio["id"]
+
+        response = client.post(
+            f"/api/v1/portfolio/{portfolio_id}/trades",
+            json={
+                "ticker": "RELIANCE.NS",
+                "transaction_type": "BUY",
+                "quantity": 10,
+                "transaction_date": "2024-01-01",
+                "price": 100,
+            },
+        )
+        assert response.status_code == 201
+
+        db = client.app.state.session_factory()
+        try:
+            for day, close in (
+                (date(2024, 1, 1), 100),
+                (date(2024, 1, 2), 110),
+                (date(2024, 1, 3), 121),
+            ):
+                db.add(
+                    MarketPrice(
+                        ticker="RELIANCE.NS",
+                        date=day,
+                        open=close,
+                        high=close,
+                        low=close,
+                        close=close,
+                        volume=1000,
+                    )
+                )
+            db.commit()
+        finally:
+            db.close()
+
+        returns_response = client.get(f"/api/v1/portfolio/{portfolio_id}/returns")
+        assert returns_response.status_code == 200
+        returns = returns_response.json()
+        assert len(returns) == 2
+        assert returns[0]["date"] == "2024-01-02"
+        assert round(returns[0]["daily_return"], 2) == 0.1
+        assert round(returns[-1]["cumulative_return"], 2) == 0.21
+
+
 def test_sell_transaction_updates_quantity_and_realized_pnl(tmp_path):
     with build_client(tmp_path) as client:
         authenticate(client)

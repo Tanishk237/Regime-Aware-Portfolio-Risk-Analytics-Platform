@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { buildHealthReport, buildRecommendations, metric } from '@/lib/analytics-derive';
 import { formatCurrency, formatNumber, formatPercent, toSeries } from '@/lib/format';
 import { useSelectedPortfolio } from '@/lib/portfolio-context';
-import { usePositions, useRegime, useRisk, useSummary, useTrades } from '@/lib/queries';
+import { usePositions, useRegime, useReturns, useRisk, useSummary, useTrades } from '@/lib/queries';
+import { cumulativeSeriesFromReturns, drawdownSeriesFromCumulative } from '@/lib/series';
 import type { Position } from '@/lib/types';
 
 export default function DashboardPage() {
@@ -30,6 +31,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 	const summary = useSummary(portfolioId);
 	const positions = usePositions(portfolioId);
 	const trades = useTrades(portfolioId);
+	const returns = useReturns(portfolioId);
 	const risk = useRisk(portfolioId);
 	const regime = useRegime(portfolioId);
 	const currency = selected?.base_currency ?? summary.data?.base_currency ?? 'INR';
@@ -40,8 +42,12 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 		regime: regime.data
 	});
 	const recommendations = buildRecommendations(health).slice(0, 3);
+	const persistedCumulative = cumulativeSeriesFromReturns(returns.data);
 	const cumulative = toSeries(risk.data?.series?.cumulative_returns);
+	const chartCumulative = cumulative.length ? cumulative : persistedCumulative;
 	const drawdown = toSeries(risk.data?.series?.drawdown);
+	const chartDrawdown = drawdown.length ? drawdown : drawdownSeriesFromCumulative(chartCumulative);
+	const chartsLoading = risk.isLoading && returns.isLoading;
 	const positionColumns: Array<Column<Position>> = [
 		{
 			key: 'ticker',
@@ -139,19 +145,19 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 
 			<div className="grid gap-4 lg:grid-cols-2">
 				<ChartCard title="Cumulative returns">
-					{risk.isLoading ? (
+					{chartsLoading ? (
 						<MetricGridSkeleton count={2} />
-					) : cumulative.length ? (
-						<SeriesLineChart data={cumulative} />
+					) : chartCumulative.length ? (
+						<SeriesLineChart data={chartCumulative} />
 					) : (
 						<EmptyState title="No return series available" />
 					)}
 				</ChartCard>
 				<ChartCard title="Drawdown">
-					{risk.isLoading ? (
+					{chartsLoading ? (
 						<MetricGridSkeleton count={2} />
-					) : drawdown.length ? (
-						<SeriesAreaChart data={drawdown} />
+					) : chartDrawdown.length ? (
+						<SeriesAreaChart data={chartDrawdown} />
 					) : (
 						<EmptyState title="No drawdown series available" />
 					)}
