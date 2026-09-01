@@ -35,7 +35,12 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	INVALID_AUTH_TOKEN: 'Your session is invalid. Please log in again.',
 	TOKEN_EXPIRED: 'Your session expired. Please log in again.',
 	EMAIL_ALREADY_REGISTERED: 'An account with this email already exists.',
-	USER_DISABLED: 'This account is disabled.'
+	USER_DISABLED: 'This account is disabled.',
+	AI_API_KEY_REQUIRED: 'Add a valid AI provider key first.',
+	AI_PROMPT_REQUIRED: 'Enter a prompt before asking the copilot.',
+	AI_PROVIDER_ERROR: 'The selected AI provider rejected the request. Check the key and provider.',
+	AI_PROVIDER_UNAVAILABLE: 'The selected AI provider is temporarily unavailable.',
+	AI_PROVIDER_INVALID_RESPONSE: 'The selected AI provider returned an unexpected response.'
 };
 
 export class ApiError extends Error {
