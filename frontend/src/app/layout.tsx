@@ -6,18 +6,29 @@ import '../styles.css';
 
 export const metadata: Metadata = {
 	title: {
-		default: 'Regime Aware Portfolio Risk Analytics',
-		template: '%s · Regime Aware Portfolio Risk Analytics'
+		default: 'Latent',
+		template: '%s · Latent'
 	},
-	description:
-		'Portfolio risk, market regimes, and decision intelligence for Indian equity portfolios.',
+	description: 'Portfolio Regime Intelligence for Indian equity portfolios.',
+	icons: {
+		icon: [
+			{ url: '/icon.png', type: 'image/png' },
+			{ url: '/brand/latent-tile-dark.png', type: 'image/png' }
+		],
+		apple: [{ url: '/apple-icon.png', type: 'image/png' }],
+		shortcut: ['/icon.png']
+	},
 	openGraph: {
-		title: 'Regime Aware Portfolio Risk Analytics',
-		description: 'Portfolio risk, market regimes, and decision intelligence.',
+		title: 'Latent',
+		description: 'Portfolio Regime Intelligence for Indian equity portfolios.',
+		images: [{ url: '/brand/latent-header-dark.png', width: 1400, height: 380 }],
 		type: 'website'
 	},
 	twitter: {
-		card: 'summary_large_image'
+		card: 'summary_large_image',
+		title: 'Latent',
+		description: 'Portfolio Regime Intelligence for Indian equity portfolios.',
+		images: ['/brand/latent-header-dark.png']
 	}
 };
 

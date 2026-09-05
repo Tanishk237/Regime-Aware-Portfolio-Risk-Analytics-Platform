@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Regime Aware Portfolio Risk Analytics"
+    app_name: str = "Latent"
     app_version: str = "0.1.0"
     environment: str = "development"
     api_prefix: str = "/api/v1"
