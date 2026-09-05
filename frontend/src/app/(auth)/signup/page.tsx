@@ -45,7 +45,7 @@ export default function SignupPage() {
 	return (
 		<AuthShell
 			title="Create account"
-			subtitle="Start with a backend account so portfolios, trades, analytics, and AI context stay tied to your workspace."
+			subtitle="Create a secure Latent workspace for your portfolio intelligence."
 			footer={
 				<>
 					Already have an account?{' '}

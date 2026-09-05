@@ -318,20 +318,21 @@
 			color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
 			transparent 1px
 		);
-	background-size: 4rem 4rem;
-	mask-image: radial-gradient(circle at 48% 42%, black, transparent 74%);
+	background-size: 4.5rem 4.5rem;
+	opacity: 0.78;
+	mask-image: radial-gradient(circle at 46% 42%, black, transparent 76%);
 }
 
 .auth-visual-glow {
 	background:
 		radial-gradient(
-			circle at 20% 28%,
-			color-mix(in oklab, var(--primary) 16%, transparent),
+			circle at 22% 24%,
+			color-mix(in oklab, var(--primary) 14%, transparent),
 			transparent 34%
 		),
 		radial-gradient(
-			circle at 58% 74%,
-			color-mix(in oklab, var(--chart-2) 13%, transparent),
+			circle at 62% 78%,
+			color-mix(in oklab, var(--chart-2) 12%, transparent),
 			transparent 35%
 		),
 		linear-gradient(
@@ -358,6 +359,44 @@
 		);
 	background-size: 3.5rem 3.5rem;
 	mask-image: linear-gradient(to bottom, black 0%, transparent 92%);
+}
+
+.auth-brand-plane {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	border: 1px solid color-mix(in oklab, var(--foreground) 11%, transparent);
+	border-radius: 2rem;
+	background: linear-gradient(
+		145deg,
+		color-mix(in oklab, var(--primary) 12%, transparent),
+		color-mix(in oklab, var(--chart-2) 8%, transparent)
+	);
+	box-shadow:
+		inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
+		0 32px 90px -54px color-mix(in oklab, var(--primary) 80%, transparent);
+	transform-style: preserve-3d;
+}
+
+.auth-brand-plane-one {
+	width: min(27rem, 76%);
+	height: 12rem;
+	transform: translate(-50%, -50%) rotateX(58deg) rotateZ(-10deg);
+	animation: auth-plane-one 10s ease-in-out infinite;
+}
+
+.auth-brand-plane-two {
+	width: min(23rem, 66%);
+	height: 10rem;
+	transform: translate(-50%, -50%) rotateX(58deg) rotateZ(12deg);
+	animation: auth-plane-two 12s ease-in-out infinite;
+}
+
+.auth-brand-plane-three {
+	width: min(18rem, 56%);
+	height: 8rem;
+	transform: translate(-50%, -50%) rotateX(58deg) rotateZ(30deg);
+	animation: auth-plane-three 14s ease-in-out infinite;
 }
 
 .auth-orb {
@@ -402,6 +441,36 @@
 	}
 	to {
 		transform: rotateX(66deg) rotateZ(378deg);
+	}
+}
+
+@keyframes auth-plane-one {
+	0%,
+	100% {
+		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(-10deg) translateY(0);
+	}
+	50% {
+		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(-7deg) translateY(-0.75rem);
+	}
+}
+
+@keyframes auth-plane-two {
+	0%,
+	100% {
+		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(12deg) translateY(0);
+	}
+	50% {
+		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(9deg) translateY(0.75rem);
+	}
+}
+
+@keyframes auth-plane-three {
+	0%,
+	100% {
+		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(30deg) translateY(0);
+	}
+	50% {
+		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(34deg) translateY(-0.5rem);
 	}
 }
 

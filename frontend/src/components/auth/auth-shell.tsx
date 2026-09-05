@@ -2,130 +2,65 @@
 
 import { motion } from 'motion/react';
 import {
-	Activity,
 	BadgeCheck,
-	Bot,
+	BrainCircuit,
 	ChartNoAxesCombined,
 	LineChart,
 	LockKeyhole,
 	ShieldCheck
 } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { LatentBrand } from '@/components/brand/latent-brand';
 import { cn } from '@/lib/utils';
 
-const metrics = [
-	{ label: 'Risk score', value: '63/100', delta: 'Aggressive' },
-	{ label: 'Regime', value: 'Bull', delta: '90% confidence' },
-	{ label: 'Drawdown', value: '-7.26%', delta: '1Y window' }
+const detailCards = [
+	{
+		title: 'Portfolio workspace',
+		description: 'Create portfolios, upload trades, and keep positions connected to analytics.',
+		icon: ShieldCheck
+	},
+	{
+		title: 'Regime intelligence',
+		description: 'Read changing market states through model-backed regime views and confidence.',
+		icon: BrainCircuit
+	},
+	{
+		title: 'Risk context',
+		description: 'Turn returns, drawdowns, volatility, and recommendations into clearer decisions.',
+		icon: LineChart
+	}
 ];
 
-const chartPoints = '4,112 54,98 104,106 154,76 204,84 254,50 304,62 354,34 404,46';
-
-function MetricRow({ label, value, delta }: (typeof metrics)[number]) {
+function BrandVisual() {
 	return (
-		<div className="flex items-center justify-between gap-4 border-b border-white/10 py-3 last:border-0">
-			<div>
-				<p className="text-muted-foreground text-xs">{label}</p>
-				<p className="num text-foreground mt-1 text-lg font-semibold">{value}</p>
-			</div>
-			<p className="text-muted-foreground text-right text-xs">{delta}</p>
-		</div>
-	);
-}
-
-function MarketVisual() {
-	return (
-		<div className="relative mt-10 grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
-			<div className="shadow-elegant relative min-h-[25rem] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-5">
-				<div className="auth-chart-grid absolute inset-0" />
-				<div className="relative flex items-center justify-between gap-4">
-					<div>
-						<p className="text-muted-foreground text-xs uppercase tracking-[0.18em]">
-							Portfolio monitor
-						</p>
-						<p className="mt-1 text-sm font-medium">Sample Indian equity basket</p>
-					</div>
-					<div className="border-positive/25 bg-positive/10 text-positive flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
-						<span className="bg-positive size-1.5 rounded-full" />
-						Live
-					</div>
-				</div>
-
-				<motion.div
-					className="bg-background/55 relative mt-10 rounded-xl border border-white/10 p-5 backdrop-blur-xl"
-					initial={{ opacity: 0, y: 18 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.55, delay: 0.1 }}
-				>
-					<div className="mb-4 flex items-center justify-between">
-						<div>
-							<p className="text-muted-foreground text-xs">Portfolio value</p>
-							<p className="num mt-1 text-2xl font-semibold">₹1.30L</p>
-						</div>
-						<div className="border-primary/25 bg-primary/10 text-primary rounded-full border px-3 py-1 text-sm font-medium">
-							Bull regime
-						</div>
-					</div>
-					<svg className="h-36 w-full overflow-visible" viewBox="0 0 408 130" role="img">
-						<title>Portfolio growth line</title>
-						<defs>
-							<linearGradient id="auth-chart-fill" x1="0" x2="0" y1="0" y2="1">
-								<stop offset="0%" stopColor="oklch(0.7 0.15 275 / 0.32)" />
-								<stop offset="100%" stopColor="oklch(0.75 0.14 190 / 0.02)" />
-							</linearGradient>
-						</defs>
-						<path d={`M ${chartPoints} L 404,126 L 4,126 Z`} fill="url(#auth-chart-fill)" />
-						<motion.polyline
-							points={chartPoints}
-							fill="none"
-							stroke="oklch(0.72 0.14 196)"
-							strokeWidth="3.5"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							initial={{ pathLength: 0 }}
-							animate={{ pathLength: 1 }}
-							transition={{ duration: 1.5, ease: 'easeInOut' }}
-						/>
-					</svg>
-				</motion.div>
-
-				<div className="relative mt-4 grid grid-cols-3 gap-3">
-					{[
-						{ label: 'VaR', value: '3.2%' },
-						{ label: 'Sharpe', value: '0.84' },
-						{ label: 'Trades', value: '10' }
-					].map((item) => (
-						<div
-							key={item.label}
-							className="bg-background/45 rounded-lg border border-white/10 px-3 py-3"
-						>
-							<p className="text-muted-foreground text-xs">{item.label}</p>
-							<p className="num mt-1 font-semibold">{item.value}</p>
-						</div>
-					))}
-				</div>
-			</div>
+		<div className="shadow-elegant relative mt-9 aspect-[1.22] w-full max-w-[34rem] overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035]">
+			<div className="auth-chart-grid absolute inset-0" />
+			<div className="auth-brand-plane auth-brand-plane-one" />
+			<div className="auth-brand-plane auth-brand-plane-two" />
+			<div className="auth-brand-plane auth-brand-plane-three" />
 
 			<motion.div
-				className="shadow-elegant relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-5"
-				initial={{ opacity: 0, y: 18 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.55, delay: 0.2 }}
+				className="bg-background/60 shadow-elegant absolute left-1/2 top-1/2 flex size-44 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[1.75rem] border border-white/10 backdrop-blur-xl"
+				initial={{ opacity: 0, scale: 0.94 }}
+				animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+				transition={{
+					opacity: { duration: 0.5 },
+					scale: { duration: 0.5 },
+					y: { duration: 6, repeat: Infinity, ease: 'easeInOut' }
+				}}
 			>
-				<div className="auth-orb mx-auto mb-6 mt-2 flex size-28 items-center justify-center rounded-full">
-					<LineChart className="text-primary size-9" />
-				</div>
-				<div>
-					{metrics.map((metric) => (
-						<MetricRow key={metric.label} {...metric} />
-					))}
-				</div>
-				<div className="border-warning/20 bg-warning/10 mt-5 rounded-lg border p-3">
-					<p className="text-warning text-xs font-medium">Recommendation</p>
-					<p className="text-muted-foreground mt-1 text-xs leading-5">
-						Review concentration before adding fresh capital.
-					</p>
+				<div className="auth-orb flex size-32 items-center justify-center rounded-full">
+					<Image
+						src="/brand/latent-mark-white.png"
+						alt=""
+						width={76}
+						height={76}
+						className="size-18"
+					/>
 				</div>
 			</motion.div>
 		</div>
@@ -145,106 +80,118 @@ export function AuthShell({
 	footer: ReactNode;
 	className?: string;
 }) {
+	const pathname = usePathname();
+	const isSignup = pathname?.startsWith('/signup');
+
 	return (
 		<main className="auth-page bg-background text-foreground dark min-h-screen overflow-hidden">
 			<div className="auth-visual-glow absolute inset-0" />
-			<div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-10">
+			<div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-10">
 				<header className="flex items-center justify-between">
-					<div className="flex items-center gap-3">
-						<div className="bg-gradient-brand text-primary-foreground shadow-elegant flex size-11 items-center justify-center rounded-xl text-sm font-bold">
-							R
-						</div>
-						<div>
-							<p className="font-semibold">Regime Aware</p>
-							<p className="text-muted-foreground text-sm">Portfolio Risk Analytics</p>
-						</div>
-					</div>
+					<LatentBrand variant="dark" />
 					<div className="text-muted-foreground hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-sm sm:flex">
 						<LockKeyhole className="text-primary size-4" />
-						Secure portfolio workspace
+						Secure workspace
 					</div>
 				</header>
 
-				<div className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[minmax(0,1.3fr)_minmax(22rem,0.7fr)]">
-					<section className="hidden lg:block">
-						<div className="max-w-4xl">
+				<div className="grid flex-1 items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_27rem] lg:gap-14 xl:gap-20">
+					<section className="order-2 lg:order-1">
+						<div className="mx-auto max-w-2xl lg:mx-0">
+							<div className="text-muted-foreground mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-sm">
+								<span className="bg-primary size-1.5 rounded-full" />
+								Built for calmer portfolio decisions
+							</div>
 							<motion.h1
-								className="max-w-4xl text-5xl font-semibold leading-tight tracking-normal xl:text-6xl"
+								className="max-w-2xl text-4xl font-semibold leading-tight tracking-normal sm:text-5xl"
 								initial={{ opacity: 0, y: 18 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ duration: 0.55 }}
 							>
-								Know when your portfolio risk is changing.
+								See the hidden state behind your portfolio.
 							</motion.h1>
 							<motion.p
-								className="text-muted-foreground mt-5 max-w-2xl text-lg leading-8"
+								className="text-muted-foreground mt-5 max-w-xl text-base leading-7 sm:text-lg"
 								initial={{ opacity: 0, y: 14 }}
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ duration: 0.55, delay: 0.12 }}
 							>
-								A connected workspace for trades, market data, HMM regimes, risk analytics, stress
-								tests, recommendations, and AI summaries.
+								Latent turns market regimes, portfolio risk, and AI explanations into a friendly
+								decision workspace.
 							</motion.p>
-							<MarketVisual />
-							<div className="mt-5 grid grid-cols-3 gap-3">
-								{[
-									{ icon: Activity, label: 'Live risk' },
-									{ icon: ShieldCheck, label: 'User scoped' },
-									{ icon: Bot, label: 'AI reports' }
-								].map((item) => (
-									<div
-										key={item.label}
-										className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.035] px-4 py-3"
-									>
-										<item.icon className="text-primary size-5" />
-										<p className="text-sm font-medium">{item.label}</p>
-									</div>
-								))}
+
+							<div className="mt-8 grid gap-3 sm:grid-cols-3">
+								{detailCards.map((item) => {
+									const Icon = item.icon;
+
+									return (
+										<div
+											key={item.title}
+											className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 backdrop-blur"
+										>
+											<Icon className="text-primary mb-3 size-5" />
+											<h3 className="text-sm font-semibold">{item.title}</h3>
+											<p className="text-muted-foreground mt-2 text-xs leading-5">
+												{item.description}
+											</p>
+										</div>
+									);
+								})}
 							</div>
+							<BrandVisual />
 						</div>
 					</section>
 
-					<section className={cn('mx-auto w-full max-w-md lg:ml-auto', className)}>
+					<section className={cn('order-1 mx-auto w-full max-w-[27rem] lg:order-2', className)}>
 						<div className="mb-8 lg:hidden">
-							<h1 className="text-3xl font-semibold">Regime Aware Portfolio Risk Analytics</h1>
+							<h1 className="text-3xl font-semibold">Latent</h1>
 							<p className="text-muted-foreground mt-2 text-base">
-								Portfolio risk, regimes, and decision intelligence.
+								Portfolio Regime Intelligence for risk-aware investing.
 							</p>
-							<div className="mt-5 grid grid-cols-3 gap-2">
-								{[
-									{ label: 'VaR', value: '3.2%' },
-									{ label: 'Regime', value: 'Bull' },
-									{ label: 'Health', value: '82' }
-								].map((item) => (
-									<div
-										key={item.label}
-										className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2"
-									>
-										<p className="text-muted-foreground text-xs">{item.label}</p>
-										<p className="num mt-1 text-sm font-semibold">{item.value}</p>
-									</div>
-								))}
-							</div>
 						</div>
 						<motion.div
-							className="bg-card/90 shadow-elegant rounded-2xl border border-white/10 p-6 backdrop-blur-xl sm:p-8"
+							className="bg-card/92 shadow-elegant rounded-[1.75rem] border border-white/10 p-6 backdrop-blur-xl sm:p-8 lg:mt-10"
 							initial={{ opacity: 0, y: 18 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: 0.45, delay: 0.08 }}
 						>
 							<div className="mb-6">
-								<div className="text-primary mb-4 flex items-center gap-2">
+								<div className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1.5">
 									<BadgeCheck className="size-4" />
-									<span className="text-sm font-medium">Production analytics access</span>
+									<span className="text-sm font-medium">Secure analytics access</span>
 								</div>
-								<h2 className="text-2xl font-semibold">{title}</h2>
+								<h2 className="text-3xl font-semibold tracking-normal">{title}</h2>
 								<p className="text-muted-foreground mt-2 text-sm leading-6">{subtitle}</p>
+							</div>
+							<div className="bg-background/50 mb-6 grid grid-cols-2 gap-1 rounded-xl border border-white/10 p-1">
+								<Link
+									href="/login"
+									className={cn(
+										'rounded-lg px-3 py-2 text-center text-sm font-medium transition',
+										!isSignup
+											? 'bg-primary text-primary-foreground shadow-soft'
+											: 'text-muted-foreground hover:text-foreground'
+									)}
+								>
+									Login
+								</Link>
+								<Link
+									href="/signup"
+									className={cn(
+										'rounded-lg px-3 py-2 text-center text-sm font-medium transition',
+										isSignup
+											? 'bg-primary text-primary-foreground shadow-soft'
+											: 'text-muted-foreground hover:text-foreground'
+									)}
+								>
+									Create account
+								</Link>
 							</div>
 							{children}
 							<div className="text-muted-foreground mt-5 text-center text-sm">{footer}</div>
 							<div className="text-muted-foreground mt-6 flex items-center justify-center gap-2 border-t border-white/10 pt-5 text-xs">
 								<ChartNoAxesCombined className="text-primary size-4" />
-								Risk, regimes, and AI reports stay linked to your account.
+								Your workspace opens after secure sign in.
 							</div>
 						</motion.div>
 					</section>

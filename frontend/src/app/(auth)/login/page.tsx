@@ -39,7 +39,7 @@ export default function LoginPage() {
 	return (
 		<AuthShell
 			title="Welcome back"
-			subtitle="Log in to continue monitoring portfolios, risk, regimes, recommendations, and AI reports."
+			subtitle="Sign in to enter your Latent workspace."
 			footer={
 				<>
 					New to the platform?{' '}
