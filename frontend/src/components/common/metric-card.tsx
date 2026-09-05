@@ -52,7 +52,13 @@ export function MetricCard({
 	);
 
 	return (
-		<Card className={cn('panel-surface border-border/80 gap-0 p-4', className)}>
+		<Card
+			className={cn(
+				'panel-surface border-border/70 hover:border-primary/25 hover:shadow-elegant group relative gap-0 overflow-hidden p-4',
+				className
+			)}
+		>
+			<div className="via-primary/25 absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
 			<div className="flex items-start justify-between gap-2">
 				{labelNode}
 				{icon ? <span className="text-muted-foreground">{icon}</span> : null}
@@ -60,7 +66,11 @@ export function MetricCard({
 			{loading ? (
 				<Skeleton className="mt-3 h-7 w-24" />
 			) : (
-				<div className={cn('num mt-2 text-xl font-semibold tabular-nums', toneClass)}>{value}</div>
+				<div
+					className={cn('num mt-2 text-2xl font-semibold tabular-nums tracking-normal', toneClass)}
+				>
+					{value}
+				</div>
 			)}
 			<div className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
 				{delta !== undefined && delta !== null && !Number.isNaN(delta) ? (

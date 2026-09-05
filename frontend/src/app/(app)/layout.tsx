@@ -33,7 +33,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 					<AppSidebar />
 					<SidebarInset className="app-shell min-w-0">
 						<TopBar />
-						<main className="mx-auto min-w-0 flex-1 space-y-5 p-3 sm:p-4 lg:max-w-[1480px] lg:p-6">
+						<main className="mx-auto min-w-0 flex-1 space-y-6 p-4 sm:p-5 lg:max-w-[1480px] lg:p-7">
 							{children}
 						</main>
 					</SidebarInset>

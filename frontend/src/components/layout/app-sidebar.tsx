@@ -29,6 +29,7 @@ import {
 	SidebarMenuItem,
 	useSidebar
 } from '@/components/ui/sidebar';
+import { LatentBrand, LatentMark } from '@/components/brand/latent-brand';
 
 const NAV = [
 	{
@@ -72,25 +73,16 @@ export function AppSidebar() {
 		<Sidebar collapsible="icon" className="border-sidebar-border">
 			<SidebarHeader className="border-sidebar-border border-b px-3 py-4">
 				<Link href="/dashboard" className="flex items-center gap-2.5">
-					<span className="bg-gradient-brand text-primary-foreground shadow-elegant flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold">
-						R
-					</span>
-
-					{!collapsed && (
-						<span className="min-w-0">
-							<span className="block truncate text-sm font-semibold leading-tight">
-								Regime Aware
-							</span>
-							<span className="text-sidebar-foreground/60 block truncate text-xs">
-								Risk Analytics
-							</span>
-						</span>
+					{collapsed ? (
+						<LatentMark variant="dark" className="size-8 shrink-0 rounded-lg" />
+					) : (
+						<LatentBrand variant="dark" size="sm" />
 					)}
 				</Link>
 			</SidebarHeader>
-			<SidebarContent>
+			<SidebarContent className="px-1.5 py-3">
 				{NAV.map((group) => (
-					<SidebarGroup key={group.label}>
+					<SidebarGroup key={group.label} className="py-2">
 						{!collapsed && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
 						<SidebarGroupContent>
 							<SidebarMenu>

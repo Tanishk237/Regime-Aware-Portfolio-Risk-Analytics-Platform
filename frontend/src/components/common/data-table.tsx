@@ -37,16 +37,19 @@ export function DataTable<T>({
 
 	return (
 		<div
-			className={cn('panel-surface border-border/80 overflow-x-auto rounded-lg border', className)}
+			className={cn(
+				'panel-surface border-border/70 shadow-soft overflow-x-auto rounded-xl border',
+				className
+			)}
 		>
 			<Table>
-				<TableHeader className="bg-surface-strong/60">
+				<TableHeader className="bg-surface-strong/55">
 					<TableRow className="hover:bg-transparent">
 						{columns.map((column) => (
 							<TableHead
 								key={column.key}
 								className={cn(
-									'whitespace-nowrap text-xs font-semibold uppercase',
+									'text-muted-foreground h-10 whitespace-nowrap text-xs font-semibold uppercase tracking-wide',
 									column.align === 'right' && 'text-right',
 									column.align === 'center' && 'text-center',
 									column.className
@@ -59,12 +62,15 @@ export function DataTable<T>({
 				</TableHeader>
 				<TableBody>
 					{rows.map((row, index) => (
-						<TableRow key={rowKey(row, index)} className="hover:bg-surface-strong/45">
+						<TableRow
+							key={rowKey(row, index)}
+							className="border-border/60 hover:bg-surface-strong/45 transition-colors"
+						>
 							{columns.map((column) => (
 								<TableCell
 									key={column.key}
 									className={cn(
-										'whitespace-nowrap',
+										'whitespace-nowrap text-sm',
 										dense ? 'py-2' : 'py-3',
 										column.align === 'right' && 'text-right',
 										column.align === 'center' && 'text-center',

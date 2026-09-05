@@ -19,11 +19,11 @@ export function ChartCard({
 	bodyClassName?: string;
 }) {
 	return (
-		<Card className={cn('panel-surface border-border/80 gap-3 py-4', className)}>
-			<CardHeader className="gap-1 px-4">
+		<Card className={cn('panel-surface border-border/70 gap-3 overflow-hidden py-4', className)}>
+			<CardHeader className="gap-1 px-4 sm:px-5">
 				<div className="flex flex-wrap items-start justify-between gap-2">
 					<div>
-						<CardTitle className="text-sm font-semibold">{title}</CardTitle>
+						<CardTitle className="text-base font-semibold">{title}</CardTitle>
 						{description ? (
 							<CardDescription className="text-xs">{description}</CardDescription>
 						) : null}
@@ -31,7 +31,7 @@ export function ChartCard({
 					{action}
 				</div>
 			</CardHeader>
-			<CardContent className={cn('px-2 pb-0 sm:px-4', bodyClassName)}>{children}</CardContent>
+			<CardContent className={cn('px-2 pb-0 sm:px-5', bodyClassName)}>{children}</CardContent>
 		</Card>
 	);
 }
@@ -50,11 +50,11 @@ export function SectionCard({
 	className?: string;
 }) {
 	return (
-		<Card className={cn('panel-surface border-border/80 gap-3 py-4', className)}>
-			<CardHeader className="gap-1 px-4">
+		<Card className={cn('panel-surface border-border/70 gap-3 overflow-hidden py-4', className)}>
+			<CardHeader className="gap-1 px-4 sm:px-5">
 				<div className="flex flex-wrap items-start justify-between gap-2">
 					<div>
-						<CardTitle className="text-sm font-semibold">{title}</CardTitle>
+						<CardTitle className="text-base font-semibold">{title}</CardTitle>
 						{description ? (
 							<CardDescription className="text-xs">{description}</CardDescription>
 						) : null}
@@ -62,7 +62,7 @@ export function SectionCard({
 					{action}
 				</div>
 			</CardHeader>
-			<CardContent className="px-4">{children}</CardContent>
+			<CardContent className="px-4 sm:px-5">{children}</CardContent>
 		</Card>
 	);
 }

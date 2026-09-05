@@ -124,7 +124,7 @@ export function TopBar() {
 	const router = useRouter();
 
 	return (
-		<header className="bg-background/92 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] backdrop-blur sm:px-4">
+		<header className="bg-background/88 sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] backdrop-blur-xl sm:px-5">
 			<SidebarTrigger />
 			<PortfolioSelector />
 			<div className="ml-auto flex items-center gap-1.5 sm:gap-2">
@@ -185,12 +185,16 @@ export function PageHeader({
 	actions?: React.ReactNode;
 }) {
 	return (
-		<div className="flex flex-wrap items-end justify-between gap-3 border-b pb-4">
-			<div>
-				<h1 className="text-xl font-semibold">{title}</h1>
-				{description ? <p className="text-muted-foreground mt-0.5 text-sm">{description}</p> : null}
+		<div className="border-border/70 bg-card/50 shadow-soft rounded-2xl border px-4 py-4 backdrop-blur sm:px-5">
+			<div className="flex flex-wrap items-end justify-between gap-3">
+				<div>
+					<h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
+					{description ? (
+						<p className="text-muted-foreground mt-1 max-w-3xl text-sm leading-6">{description}</p>
+					) : null}
+				</div>
+				{actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
 			</div>
-			{actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
 		</div>
 	);
 }
