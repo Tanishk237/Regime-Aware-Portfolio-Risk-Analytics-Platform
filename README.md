@@ -1,4 +1,6 @@
-# Regime Aware Portfolio Risk Analytics
+# Latent
+
+Portfolio Regime Intelligence.
 
 Production-oriented MVP for portfolio persistence, market data ingestion, risk analytics, regime detection, and a Next.js dashboard.
 
@@ -69,6 +71,17 @@ frontend/src/
 
 Local development can run with SQLite.
 
+## Quick Start
+
+Start backend and frontend together from the repository root:
+
+```bash
+./scripts/dev
+```
+
+Frontend opens at `http://localhost:3000/login`.
+Backend health is at `http://127.0.0.1:8000/api/v1/health`.
+
 ## Backend Setup
 
 From the repository root:
@@ -112,7 +125,7 @@ In a second terminal:
 cd frontend
 npm install
 cp .env.example .env.local
-npm run dev -- --webpack --hostname localhost --port 3000
+npm run dev -- --hostname localhost --port 3000
 ```
 
 Open:
@@ -334,7 +347,7 @@ Frontend:
 
 ```bash
 cd frontend
-npm run dev -- --webpack --hostname localhost --port 3000
+npm run dev -- --hostname localhost --port 3000
 npm run typecheck
 npm run lint
 npm run build

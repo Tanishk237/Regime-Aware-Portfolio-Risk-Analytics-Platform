@@ -1,6 +1,6 @@
-# Regime Aware Portfolio Risk Analytics Frontend
+# Latent Frontend
 
-Production Next.js frontend for the Regime Aware Portfolio Risk Analytics Platform.
+Production Next.js frontend for Latent, a Portfolio Regime Intelligence platform.
 
 ## Stack
 
