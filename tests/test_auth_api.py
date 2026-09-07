@@ -67,6 +67,40 @@ def test_signup_login_me_and_protected_route_flow(tmp_path):
         assert login.status_code == 200
         assert login.json()["access_token"]
         assert "rapra_access_token" in client.cookies
+        assert "Max-Age" not in login.headers["set-cookie"]
+
+        remembered_login = client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "user@example.com",
+                "password": "strong-password",
+                "remember_me": True,
+            },
+        )
+        assert remembered_login.status_code == 200
+        assert "Max-Age" in remembered_login.headers["set-cookie"]
+
+
+def test_guest_session_uses_bearer_token_without_cookie(tmp_path):
+    with build_client(tmp_path) as client:
+        guest = client.post("/api/v1/auth/guest")
+        assert guest.status_code == 201
+        payload = guest.json()
+        assert payload["token_type"] == "bearer"
+        assert payload["access_token"]
+        assert payload["user"]["email"].endswith("@guest.latent.local")
+        assert payload["user"]["full_name"] == "Guest"
+        assert "rapra_access_token" not in client.cookies
+
+        without_token = client.get("/api/v1/portfolio")
+        assert without_token.status_code == 401
+
+        client.headers.update(
+            {"Authorization": f"Bearer {payload['access_token']}"}
+        )
+        portfolios = client.get("/api/v1/portfolio")
+        assert portfolios.status_code == 200
+        assert portfolios.json() == []
 
 
 def test_signup_rejects_duplicate_email_and_login_rejects_bad_password(tmp_path):

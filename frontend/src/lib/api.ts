@@ -5,6 +5,7 @@
  */
 
 import { isAuthFailure, publishAuthFailure } from '@/lib/auth-events';
+import { getGuestAccessToken } from '@/lib/storage';
 
 export const API_BASE_URL = (
 	process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:8000/api/v1'
@@ -126,9 +127,15 @@ async function request<T>(
 		};
 		if (opts.signal) init.signal = opts.signal;
 		if (opts.formData) {
+			const guestToken = getGuestAccessToken();
+			if (guestToken) init.headers = { Authorization: `Bearer ${guestToken}` };
 			init.body = opts.formData;
 		} else {
-			init.headers = { 'Content-Type': 'application/json' };
+			const guestToken = getGuestAccessToken();
+			init.headers = {
+				'Content-Type': 'application/json',
+				...(guestToken ? { Authorization: `Bearer ${guestToken}` } : {})
+			};
 			if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
 		}
 		response = await fetch(buildUrl(path, opts.params), init);

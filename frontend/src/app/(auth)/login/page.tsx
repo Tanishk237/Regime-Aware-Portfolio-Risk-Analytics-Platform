@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 import { AuthShell } from '@/components/auth/auth-shell';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { errorMessage } from '@/lib/api';
@@ -16,6 +17,7 @@ export default function LoginPage() {
 	const { hydrated, signIn, user } = useAuth();
 	const [email, setEmail] = useState('');
 	const [password, setPassword] = useState('');
+	const [rememberMe, setRememberMe] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 
@@ -27,7 +29,7 @@ export default function LoginPage() {
 		setError(null);
 		setSubmitting(true);
 		try {
-			await signIn({ email, password });
+			await signIn({ email, password, rememberMe });
 			router.replace('/dashboard');
 		} catch (err) {
 			setError(errorMessage(err));
@@ -78,6 +80,20 @@ export default function LoginPage() {
 						onChange={(event) => setPassword(event.target.value)}
 					/>
 				</div>
+				<label className="text-muted-foreground flex cursor-pointer items-start gap-2 text-sm leading-5">
+					<Checkbox
+						checked={rememberMe}
+						onCheckedChange={(checked) => setRememberMe(checked === true)}
+						aria-label="Remember this login"
+						className="mt-0.5"
+					/>
+					<span>
+						Remember me on this device
+						<span className="block text-xs">
+							Leave unchecked to require this login screen again after the tab session ends.
+						</span>
+					</span>
+				</label>
 				{error ? <p className="text-negative text-sm">{error}</p> : null}
 				<Button type="submit" disabled={submitting}>
 					{submitting ? 'Logging in...' : 'Login'}

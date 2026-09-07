@@ -36,6 +36,7 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str = Field(min_length=1, max_length=128)
+    remember_me: bool = False
 
     @field_validator("email")
     @classmethod

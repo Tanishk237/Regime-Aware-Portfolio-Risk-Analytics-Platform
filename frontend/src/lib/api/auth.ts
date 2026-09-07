@@ -16,12 +16,16 @@ export type AuthResponse = {
 	user: AuthUser;
 };
 
-export function login(input: { email: string; password: string }) {
+export function login(input: { email: string; password: string; remember_me?: boolean }) {
 	return api.post<AuthResponse>('/auth/login', input);
 }
 
 export function signup(input: { email: string; password: string; full_name?: string }) {
 	return api.post<AuthResponse>('/auth/signup', input);
+}
+
+export function createGuestSession() {
+	return api.post<AuthResponse>('/auth/guest');
 }
 
 export function me() {

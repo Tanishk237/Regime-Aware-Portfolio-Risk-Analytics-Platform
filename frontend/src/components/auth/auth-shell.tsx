@@ -5,16 +5,23 @@ import {
 	BadgeCheck,
 	BrainCircuit,
 	ChartNoAxesCombined,
+	HelpCircle,
 	LineChart,
 	LockKeyhole,
 	ShieldCheck
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 
 import { LatentBrand } from '@/components/brand/latent-brand';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { errorMessage } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 const detailCards = [
@@ -81,7 +88,22 @@ export function AuthShell({
 	className?: string;
 }) {
 	const pathname = usePathname();
+	const router = useRouter();
+	const { continueAsGuest } = useAuth();
 	const isSignup = pathname?.startsWith('/signup');
+	const [guestLoading, setGuestLoading] = useState(false);
+
+	const startGuest = async () => {
+		setGuestLoading(true);
+		try {
+			await continueAsGuest();
+			router.replace('/dashboard');
+		} catch (error) {
+			toast.error(errorMessage(error));
+		} finally {
+			setGuestLoading(false);
+		}
+	};
 
 	return (
 		<main className="auth-page bg-background text-foreground dark min-h-screen overflow-hidden">
@@ -162,6 +184,38 @@ export function AuthShell({
 								</div>
 								<h2 className="text-3xl font-semibold tracking-normal">{title}</h2>
 								<p className="text-muted-foreground mt-2 text-sm leading-6">{subtitle}</p>
+							</div>
+							<div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+								<div className="mb-3 flex items-center justify-between gap-3">
+									<p className="text-sm font-semibold">Choose how to enter</p>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<button
+												type="button"
+												aria-label="Guest and account difference"
+												className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border border-white/10 transition"
+											>
+												<HelpCircle className="size-4" />
+											</button>
+										</TooltipTrigger>
+										<TooltipContent className="max-w-72 text-sm leading-5">
+											Guest mode is temporary for this browser tab. An account saves portfolios,
+											trades, history, and analytics so you can return later.
+										</TooltipContent>
+									</Tooltip>
+								</div>
+								<Button
+									type="button"
+									variant="outline"
+									className="w-full justify-center"
+									disabled={guestLoading}
+									onClick={() => void startGuest()}
+								>
+									{guestLoading ? 'Starting guest session...' : 'Continue as Guest'}
+								</Button>
+								<p className="text-muted-foreground mt-3 text-xs leading-5">
+									Best for a quick CSV-based trial. The session token is kept only in this tab.
+								</p>
 							</div>
 							<div className="bg-background/50 mb-6 grid grid-cols-2 gap-1 rounded-xl border border-white/10 p-1">
 								<Link

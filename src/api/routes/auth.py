@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import secrets
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
@@ -37,11 +39,12 @@ def _set_auth_cookie(
     response: Response,
     token: str,
     settings: Settings,
+    max_age: Optional[int] = None,
 ) -> None:
     response.set_cookie(
         key=settings.auth_cookie_name,
         value=token,
-        max_age=settings.access_token_expire_minutes * 60,
+        max_age=max_age,
         httponly=True,
         secure=settings.auth_cookie_secure,
         samesite=settings.auth_cookie_samesite,
@@ -54,6 +57,35 @@ def _clear_auth_cookie(response: Response, settings: Settings) -> None:
         httponly=True,
         secure=settings.auth_cookie_secure,
         samesite=settings.auth_cookie_samesite,
+    )
+
+
+@router.post("/guest", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+def guest_session(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AuthResponse:
+    user = User(
+        email=f"guest-{secrets.token_urlsafe(18).lower()}@guest.latent.local",
+        full_name="Guest",
+        password_hash=None,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    expires = timedelta(hours=12)
+    token = create_access_token(
+        subject=str(user.id),
+        secret_key=settings.auth_secret_key,
+        expires_delta=expires,
+        extra_claims={"email": user.email, "guest": True},
+    )
+    return AuthResponse(
+        access_token=token,
+        expires_in=int(expires.total_seconds()),
+        user=UserRead.model_validate(user),
     )
 
 
@@ -84,7 +116,12 @@ def signup(
     db.refresh(user)
 
     auth = _token_response(user, settings)
-    _set_auth_cookie(response, auth.access_token, settings)
+    _set_auth_cookie(
+        response,
+        auth.access_token,
+        settings,
+        max_age=settings.access_token_expire_minutes * 60,
+    )
     return auth
 
 
@@ -110,7 +147,12 @@ def login(
         )
 
     auth = _token_response(user, settings)
-    _set_auth_cookie(response, auth.access_token, settings)
+    _set_auth_cookie(
+        response,
+        auth.access_token,
+        settings,
+        max_age=settings.access_token_expire_minutes * 60 if payload.remember_me else None,
+    )
     return auth
 
 

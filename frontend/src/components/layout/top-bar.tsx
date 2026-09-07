@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { LogOut, Moon, Plus, RefreshCw, Sun, User } from 'lucide-react';
+import { LogOut, Moon, Plus, RefreshCw, Sun, Upload, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -33,16 +33,34 @@ import { cn } from '@/lib/utils';
 
 export function PortfolioSelector({ className }: { className?: string }) {
 	const { portfolios, isLoading, selectedId, select } = useSelectedPortfolio();
+	const { user } = useAuth();
+
+	if (user?.isGuest && portfolios.length === 0) {
+		return (
+			<Button asChild size="sm" variant="outline" className={className}>
+				<Link href="/upload">
+					<Plus className="size-3.5" /> Upload guest CSV
+				</Link>
+			</Button>
+		);
+	}
 
 	if (isLoading) return <Skeleton className={cn('h-9 w-44', className)} />;
 
 	if (portfolios.length === 0) {
 		return (
-			<Button asChild size="sm" variant="outline" className={className}>
-				<Link href="/portfolios">
-					<Plus className="size-3.5" /> Create your first portfolio
-				</Link>
-			</Button>
+			<div className={cn('flex items-center gap-2', className)}>
+				<Button asChild size="sm" variant="outline">
+					<Link href="/upload">
+						<Upload className="size-3.5" /> Upload CSV
+					</Link>
+				</Button>
+				<Button asChild size="sm" variant="ghost" className="hidden sm:inline-flex">
+					<Link href="/portfolios">
+						<Plus className="size-3.5" /> Create
+					</Link>
+				</Button>
+			</div>
 		);
 	}
 
@@ -144,14 +162,26 @@ export function TopBar() {
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<Button variant="ghost" size="icon" aria-label="User menu">
-							<span className="bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-full text-xs font-semibold">
+							<span
+								className={cn(
+									'bg-primary text-primary-foreground flex size-7 items-center justify-center rounded-full text-xs font-semibold',
+									user?.isGuest && 'bg-warning text-warning-foreground'
+								)}
+							>
 								{(user?.name ?? 'D').slice(0, 1).toUpperCase()}
 							</span>
 						</Button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-56">
 						<DropdownMenuLabel className="font-normal">
-							<p className="text-sm font-medium">{user?.name ?? 'Demo User'}</p>
+							<div className="flex items-center gap-2">
+								<p className="text-sm font-medium">{user?.name ?? 'Demo User'}</p>
+								{user?.isGuest ? (
+									<span className="bg-warning-muted text-warning rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+										Guest
+									</span>
+								) : null}
+							</div>
 							<p className="text-muted-foreground text-xs">{user?.email ?? 'Signed in'}</p>
 						</DropdownMenuLabel>
 						<DropdownMenuSeparator />
@@ -166,7 +196,7 @@ export function TopBar() {
 								router.replace('/login');
 							}}
 						>
-							<LogOut className="size-4" /> Log out
+							<LogOut className="size-4" /> {user?.isGuest ? 'Exit guest session' : 'Log out'}
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
