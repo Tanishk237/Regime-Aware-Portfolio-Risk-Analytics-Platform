@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Briefcase, Plus, ScrollText } from 'lucide-react';
+import { Briefcase, Plus, ScrollText, Upload } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/states';
 import { Button } from '@/components/ui/button';
@@ -23,14 +23,21 @@ export function RequirePortfolio({
 		return (
 			<EmptyState
 				icon={<Briefcase className="size-5" />}
-				title="Create a portfolio to begin"
-				description={`Create your first portfolio to unlock ${label}.`}
+				title="Start with a portfolio"
+				description={`Create one manually or upload your trades CSV to unlock ${label}.`}
 				action={
-					<Button asChild size="sm">
-						<Link href="/portfolios">
-							<Plus className="size-4" /> Create Portfolio
-						</Link>
-					</Button>
+					<div className="flex flex-col gap-2 sm:flex-row">
+						<Button asChild size="sm">
+							<Link href="/upload">
+								<Upload className="size-4" /> Upload CSV
+							</Link>
+						</Button>
+						<Button asChild size="sm" variant="outline">
+							<Link href="/portfolios">
+								<Plus className="size-4" /> Create Portfolio
+							</Link>
+						</Button>
+					</div>
 				}
 			/>
 		);
