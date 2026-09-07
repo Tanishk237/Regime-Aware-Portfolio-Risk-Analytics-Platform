@@ -54,6 +54,7 @@ export type PortfolioSummary = {
 	total_pnl?: number;
 	unrealized_pnl?: number;
 	realized_pnl?: number;
+	return_pct?: number;
 	latest_return?: number;
 	total_return?: number;
 	position_count?: number;

@@ -27,7 +27,7 @@ import {
 } from '@/lib/series';
 
 const METRICS = [
-	{ label: 'Total return', names: ['total_return'], kind: 'pct' },
+	{ label: 'Period return', names: ['period_return', 'total_return'], kind: 'pct' },
 	{ label: 'CAGR', names: ['cagr'], kind: 'pct' },
 	{ label: 'Volatility', names: ['annualized_volatility', 'volatility'], kind: 'pct' },
 	{ label: 'Max drawdown', names: ['max_drawdown'], kind: 'pct' },

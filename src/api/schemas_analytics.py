@@ -35,6 +35,7 @@ class PortfolioPnL(BaseModel):
 
 class RiskMetrics(BaseModel):
     daily_mean_return: float
+    period_return: float
     total_return: float
     cagr: float
     historical_var: float

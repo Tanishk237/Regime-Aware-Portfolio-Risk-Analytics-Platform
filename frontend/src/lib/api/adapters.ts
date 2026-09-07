@@ -50,6 +50,12 @@ function optionalNumber(value: unknown): number | undefined {
 	return maybeNumber(value) ?? undefined;
 }
 
+function optionalReturnFraction(value: unknown): number | undefined {
+	const parsed = maybeNumber(value);
+	if (parsed === undefined || parsed === null) return undefined;
+	return Math.abs(parsed) > 1 ? parsed / 100 : parsed;
+}
+
 function numberOrZero(value: unknown): number {
 	return maybeNumber(value) ?? 0;
 }
@@ -141,8 +147,11 @@ export function adaptPortfolioReturn(value: unknown): PortfolioReturn {
 
 export function adaptSummary(value: unknown): PortfolioSummary {
 	const row = asRecord(value);
-	const unrealized = maybeNumber(row['unrealized_profit']) ?? maybeNumber(row['unrealized_pnl']);
-	const realized = maybeNumber(row['realized_profit']) ?? maybeNumber(row['realized_pnl']) ?? 0;
+	const unrealized = maybeNumber(row['unrealized_pnl']) ?? maybeNumber(row['unrealized_profit']);
+	const realized = maybeNumber(row['realized_pnl']) ?? maybeNumber(row['realized_profit']) ?? 0;
+	const returnPct = optionalReturnFraction(
+		row['return_pct'] ?? row['total_return'] ?? row['unrealized_profit_pct']
+	);
 	return {
 		portfolio_id: optionalString(row['portfolio_id']),
 		name: optionalString(row['name']),
@@ -150,11 +159,14 @@ export function adaptSummary(value: unknown): PortfolioSummary {
 		benchmark: optionalString(row['benchmark']),
 		invested_value: maybeNumber(row['invested_value']) ?? 0,
 		current_value: optionalNumber(row['current_value']),
-		total_pnl: unrealized === null ? realized : (unrealized ?? 0) + realized,
-		unrealized_pnl: optionalNumber(row['unrealized_profit'] ?? row['unrealized_pnl']),
+		total_pnl:
+			optionalNumber(row['total_pnl']) ??
+			(unrealized === null ? realized : (unrealized ?? 0) + realized),
+		unrealized_pnl: optionalNumber(row['unrealized_pnl'] ?? row['unrealized_profit']),
 		realized_pnl: realized,
-		latest_return: optionalNumber(row['latest_return']),
-		total_return: optionalNumber(row['total_return'] ?? row['unrealized_profit_pct']),
+		return_pct: returnPct,
+		latest_return: optionalReturnFraction(row['latest_return']),
+		total_return: returnPct,
 		position_count: maybeNumber(row['positions_count']) ?? maybeNumber(row['position_count']) ?? 0,
 		trade_count: maybeNumber(row['trades_count']) ?? maybeNumber(row['trade_count']) ?? 0,
 		positions_count: maybeNumber(row['positions_count']) ?? maybeNumber(row['position_count']) ?? 0,

@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.main import create_app
 from src.config.settings import Settings
-from src.database.models import MarketPrice
+from src.database.models import MarketPrice, PortfolioReturn
 
 
 def build_client(tmp_path) -> TestClient:
@@ -210,7 +210,66 @@ def test_positions_and_summary_are_enriched_from_market_prices(tmp_path):
 
         summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
         assert summary["current_value"] == 1200
+        assert summary["unrealized_pnl"] == 200
         assert summary["unrealized_profit"] == 200
+        assert summary["realized_pnl"] == 0
+        assert summary["total_pnl"] == 200
+        assert summary["return_pct"] == 0.2
+        assert summary["unrealized_profit_pct"] == 0.2
+        assert summary["total_return"] == 0.2
+
+
+def test_summary_total_return_uses_current_value_over_invested_value(tmp_path):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio = create_portfolio(client)
+        portfolio_id = portfolio["id"]
+
+        response = client.post(
+            f"/api/v1/portfolio/{portfolio_id}/trades",
+            json={
+                "ticker": "RELIANCE.NS",
+                "transaction_type": "BUY",
+                "quantity": 10,
+                "transaction_date": "2024-01-01",
+                "price": 100,
+            },
+        )
+        assert response.status_code == 201
+
+        db = client.app.state.session_factory()
+        try:
+            db.add(
+                MarketPrice(
+                    ticker="RELIANCE.NS",
+                    date=date(2024, 1, 2),
+                    open=87,
+                    high=88,
+                    low=86,
+                    close=87,
+                    volume=1000,
+                )
+            )
+            db.add(
+                PortfolioReturn(
+                    portfolio_id=portfolio_id,
+                    date=date(2024, 1, 2),
+                    daily_return=-0.10,
+                    cumulative_return=-0.10,
+                    portfolio_value=0.90,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
+        assert summary["current_value"] == 870
+        assert summary["unrealized_pnl"] == -130
+        assert summary["total_pnl"] == -130
+        assert summary["return_pct"] == -0.13
+        assert summary["unrealized_profit_pct"] == -0.13
+        assert summary["total_return"] == -0.13
 
 
 def test_returns_endpoint_builds_missing_chart_series_from_market_prices(tmp_path):

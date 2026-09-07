@@ -171,11 +171,16 @@ class PortfolioPositionService:
             else None
         )
         unrealized_profit_pct = (
-            unrealized_profit / invested_value * 100
+            unrealized_profit / invested_value
             if unrealized_profit is not None and invested_value
             else None
         )
-
+        realized_pnl = sum(position.realized_pnl for position in positions)
+        total_pnl = (
+            unrealized_profit + realized_pnl
+            if unrealized_profit is not None
+            else realized_pnl
+        )
         return {
             "portfolio_id": portfolio.id,
             "name": portfolio.name,
@@ -184,11 +189,15 @@ class PortfolioPositionService:
             "positions_count": len(positions),
             "invested_value": invested_value,
             "current_value": current_value,
+            "total_pnl": total_pnl,
+            "unrealized_pnl": unrealized_profit,
+            "realized_pnl": realized_pnl,
+            "return_pct": unrealized_profit_pct,
             "unrealized_profit": unrealized_profit,
             "unrealized_profit_pct": unrealized_profit_pct,
-            "realized_profit": sum(position.realized_pnl for position in positions),
+            "realized_profit": realized_pnl,
             "latest_return": returns[-1].daily_return if returns else None,
-            "total_return": returns[-1].cumulative_return if returns else None,
+            "total_return": unrealized_profit_pct,
         }
 
     @staticmethod

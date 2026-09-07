@@ -127,6 +127,7 @@ def test_risk_analytics_returns_metrics_series_pnl_and_persists(tmp_path):
         assert len(payload["returns"]) > 0
         assert payload["pnl"]["cost_basis"] == 2000
         assert payload["metrics"]["cagr"] is not None
+        assert payload["metrics"]["period_return"] == payload["metrics"]["total_return"]
         assert payload["metrics"]["historical_var"] <= payload["metrics"]["daily_mean_return"]
         assert "drawdown" in payload["series"]
         assert "rolling_volatility" in payload["series"]

@@ -55,6 +55,7 @@ class AnalyticsRiskService:
 
         return {
             "daily_mean_return": mean,
+            "period_return": total_return,
             "total_return": total_return,
             "cagr": cagr,
             "historical_var": historical_var,

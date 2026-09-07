@@ -126,6 +126,10 @@ class PortfolioSummary(BaseModel):
     positions_count: int
     invested_value: float
     current_value: Optional[float] = None
+    total_pnl: Optional[float] = None
+    unrealized_pnl: Optional[float] = None
+    realized_pnl: float
+    return_pct: Optional[float] = None
     unrealized_profit: Optional[float] = None
     unrealized_profit_pct: Optional[float] = None
     realized_profit: float

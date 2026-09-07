@@ -77,7 +77,8 @@ export function buildHealthReport(input: {
 	const { summary, positions = [], risk, regime } = input;
 
 	const cagr = metric(risk, 'cagr', 'annualized_return');
-	const totalReturn = metric(risk, 'total_return') ?? summary?.total_return;
+	const totalReturn =
+		summary?.return_pct ?? summary?.total_return ?? metric(risk, 'period_return', 'total_return');
 	const volatility = metric(risk, 'annualized_volatility', 'volatility');
 	const maxDrawdown = metric(risk, 'max_drawdown');
 	const sharpe = metric(risk, 'sharpe_ratio', 'sharpe');
