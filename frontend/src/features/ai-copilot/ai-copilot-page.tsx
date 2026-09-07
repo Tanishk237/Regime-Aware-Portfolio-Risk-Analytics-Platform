@@ -422,7 +422,7 @@ async function copy(content: string) {
 }
 
 function printReport(title: string) {
-	document.title = `${title} - Regime Aware Portfolio Risk Analytics`;
+	document.title = `${title} - Latent`;
 	window.print();
 }
 

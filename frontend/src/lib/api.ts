@@ -1,5 +1,5 @@
 /**
- * Central API client for the Regime Aware Portfolio Risk Analytics backend.
+ * Central API client for the Latent backend.
  *
  * Base URL is configurable via NEXT_PUBLIC_API_BASE_URL.
  */
