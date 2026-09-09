@@ -66,7 +66,9 @@ export function PortfolioSelector({ className }: { className?: string }) {
 
 	return (
 		<Select value={selectedId ?? ''} onValueChange={select}>
-			<SelectTrigger className={cn('bg-card h-9 w-[190px]', className)}>
+			<SelectTrigger
+				className={cn('bg-card h-9 min-w-0 max-w-[11rem] sm:max-w-[14rem]', className)}
+			>
 				<SelectValue placeholder="Select portfolio" />
 			</SelectTrigger>
 			<SelectContent>
@@ -142,10 +144,12 @@ export function TopBar() {
 	const router = useRouter();
 
 	return (
-		<header className="bg-background/88 sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] backdrop-blur-xl sm:px-5">
-			<SidebarTrigger />
-			<PortfolioSelector />
-			<div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+		<header className="bg-background/88 sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] backdrop-blur-xl sm:px-5">
+			<SidebarTrigger className="shrink-0" />
+			<div className="min-w-0 flex-1">
+				<PortfolioSelector />
+			</div>
+			<div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
 				<Button
 					variant="outline"
 					size="sm"
@@ -157,7 +161,9 @@ export function TopBar() {
 					<RefreshCw className="size-3.5" />
 					<span className="hidden sm:inline">Refresh</span>
 				</Button>
-				<ApiStatus />
+				<div className="hidden sm:block">
+					<ApiStatus />
+				</div>
 				<ThemeToggle />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>

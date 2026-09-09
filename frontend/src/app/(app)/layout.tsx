@@ -28,16 +28,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
 	return (
 		<SelectedPortfolioProvider>
-			<SidebarProvider>
-				<div className="flex min-h-screen w-full">
-					<AppSidebar />
-					<SidebarInset className="app-shell min-w-0">
-						<TopBar />
-						<main className="mx-auto min-w-0 flex-1 space-y-6 p-4 sm:p-5 lg:max-w-[1480px] lg:p-7">
-							{children}
-						</main>
-					</SidebarInset>
-				</div>
+			<SidebarProvider className="min-h-screen overflow-x-hidden">
+				<AppSidebar />
+				<SidebarInset className="app-shell w-auto min-w-0 flex-1 overflow-x-hidden">
+					<TopBar />
+					<main className="mx-auto w-full min-w-0 max-w-[1480px] flex-1 space-y-6 overflow-x-hidden p-4 sm:p-5 lg:p-7">
+						{children}
+					</main>
+				</SidebarInset>
 			</SidebarProvider>
 		</SelectedPortfolioProvider>
 	);
