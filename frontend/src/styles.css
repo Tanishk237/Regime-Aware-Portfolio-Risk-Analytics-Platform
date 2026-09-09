@@ -297,188 +297,21 @@
 	box-shadow: var(--shadow-soft);
 }
 
-.auth-page {
-	position: relative;
-	isolation: isolate;
+.auth-market-tape {
+	animation: auth-market-tape 28s linear infinite;
 }
 
-.auth-page::before {
-	content: '';
-	position: absolute;
-	inset: 0;
-	z-index: 0;
-	background:
-		linear-gradient(
-			to right,
-			color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
-			transparent 1px
-		),
-		linear-gradient(
-			to bottom,
-			color-mix(in oklab, var(--foreground) 4%, transparent) 1px,
-			transparent 1px
-		);
-	background-size: 4.5rem 4.5rem;
-	opacity: 0.78;
-	mask-image: radial-gradient(circle at 46% 42%, black, transparent 76%);
-}
-
-.auth-visual-glow {
-	background:
-		radial-gradient(
-			circle at 22% 24%,
-			color-mix(in oklab, var(--primary) 14%, transparent),
-			transparent 34%
-		),
-		radial-gradient(
-			circle at 62% 78%,
-			color-mix(in oklab, var(--chart-2) 12%, transparent),
-			transparent 35%
-		),
-		linear-gradient(
-			110deg,
-			color-mix(in oklab, var(--background) 70%, transparent),
-			color-mix(in oklab, var(--background) 18%, transparent) 46%,
-			color-mix(in oklab, var(--background) 82%, transparent)
-		);
-	filter: blur(0);
-	opacity: 0.95;
-}
-
-.auth-chart-grid {
-	background:
-		linear-gradient(
-			to right,
-			color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
-			transparent 1px
-		),
-		linear-gradient(
-			to bottom,
-			color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
-			transparent 1px
-		);
-	background-size: 3.5rem 3.5rem;
-	mask-image: linear-gradient(to bottom, black 0%, transparent 92%);
-}
-
-.auth-brand-plane {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	border: 1px solid color-mix(in oklab, var(--foreground) 11%, transparent);
-	border-radius: 2rem;
-	background: linear-gradient(
-		145deg,
-		color-mix(in oklab, var(--primary) 12%, transparent),
-		color-mix(in oklab, var(--chart-2) 8%, transparent)
-	);
-	box-shadow:
-		inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
-		0 32px 90px -54px color-mix(in oklab, var(--primary) 80%, transparent);
-	transform-style: preserve-3d;
-}
-
-.auth-brand-plane-one {
-	width: min(27rem, 76%);
-	height: 12rem;
-	transform: translate(-50%, -50%) rotateX(58deg) rotateZ(-10deg);
-	animation: auth-plane-one 10s ease-in-out infinite;
-}
-
-.auth-brand-plane-two {
-	width: min(23rem, 66%);
-	height: 10rem;
-	transform: translate(-50%, -50%) rotateX(58deg) rotateZ(12deg);
-	animation: auth-plane-two 12s ease-in-out infinite;
-}
-
-.auth-brand-plane-three {
-	width: min(18rem, 56%);
-	height: 8rem;
-	transform: translate(-50%, -50%) rotateX(58deg) rotateZ(30deg);
-	animation: auth-plane-three 14s ease-in-out infinite;
-}
-
-.auth-orb {
-	position: relative;
-	background:
-		radial-gradient(
-			circle at 34% 26%,
-			color-mix(in oklab, var(--foreground) 20%, transparent),
-			transparent 22%
-		),
-		linear-gradient(
-			145deg,
-			color-mix(in oklab, var(--primary) 24%, transparent),
-			color-mix(in oklab, var(--chart-2) 16%, transparent)
-		);
-	box-shadow:
-		inset 0 0 28px color-mix(in oklab, var(--foreground) 8%, transparent),
-		0 18px 60px -28px color-mix(in oklab, var(--primary) 70%, transparent);
-}
-
-.auth-orb::before,
-.auth-orb::after {
-	content: '';
-	position: absolute;
-	inset: -0.9rem;
-	border: 1px solid color-mix(in oklab, var(--primary) 28%, transparent);
-	border-radius: 9999px;
-	transform: rotateX(66deg) rotateZ(18deg);
-	animation: auth-orb-ring 16s linear infinite;
-}
-
-.auth-orb::after {
-	inset: -1.8rem;
-	border-color: color-mix(in oklab, var(--chart-2) 24%, transparent);
-	animation-duration: 22s;
-	animation-direction: reverse;
-}
-
-@keyframes auth-orb-ring {
+@keyframes auth-market-tape {
 	from {
-		transform: rotateX(66deg) rotateZ(18deg);
+		transform: translateX(0);
 	}
 	to {
-		transform: rotateX(66deg) rotateZ(378deg);
-	}
-}
-
-@keyframes auth-plane-one {
-	0%,
-	100% {
-		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(-10deg) translateY(0);
-	}
-	50% {
-		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(-7deg) translateY(-0.75rem);
-	}
-}
-
-@keyframes auth-plane-two {
-	0%,
-	100% {
-		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(12deg) translateY(0);
-	}
-	50% {
-		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(9deg) translateY(0.75rem);
-	}
-}
-
-@keyframes auth-plane-three {
-	0%,
-	100% {
-		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(30deg) translateY(0);
-	}
-	50% {
-		transform: translate(-50%, -50%) rotateX(58deg) rotateZ(34deg) translateY(-0.5rem);
+		transform: translateX(-50%);
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.auth-page *,
-	.auth-page *::before,
-	.auth-page *::after {
+	.auth-market-tape {
 		animation: none;
-		transition-duration: 0.01ms;
 	}
 }

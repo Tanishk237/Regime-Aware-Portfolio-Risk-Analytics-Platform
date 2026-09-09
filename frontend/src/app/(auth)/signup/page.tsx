@@ -1,10 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { AuthShell } from '@/components/auth/auth-shell';
+import { AuthFooterLink, AuthShell } from '@/components/auth/auth-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,12 +46,9 @@ export default function SignupPage() {
 			title="Create account"
 			subtitle="Create a secure Latent workspace for your portfolio intelligence."
 			footer={
-				<>
-					Already have an account?{' '}
-					<Link href="/login" className="text-primary font-medium">
-						Log in
-					</Link>
-				</>
+				<AuthFooterLink label="Already have an account?" href="/login">
+					Log in
+				</AuthFooterLink>
 			}
 		>
 			<form

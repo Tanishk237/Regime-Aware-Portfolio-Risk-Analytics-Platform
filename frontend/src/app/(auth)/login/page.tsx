@@ -1,10 +1,10 @@
 'use client';
 
-import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { AuthShell } from '@/components/auth/auth-shell';
+import { AuthFooterLink, AuthShell } from '@/components/auth/auth-shell';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ export default function LoginPage() {
 	const { hydrated, signIn, user } = useAuth();
 	const [email, setEmail] = useState('');
 	const [password, setPassword] = useState('');
+	const [showPassword, setShowPassword] = useState(false);
 	const [rememberMe, setRememberMe] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
@@ -40,15 +41,12 @@ export default function LoginPage() {
 
 	return (
 		<AuthShell
-			title="Welcome back"
-			subtitle="Sign in to enter your Latent workspace."
+			title="Welcome to Latent"
+			subtitle="Sign in or continue as a guest to explore your regime workspace."
 			footer={
-				<>
-					New to the platform?{' '}
-					<Link href="/signup" className="text-primary font-medium">
-						Create account
-					</Link>
-				</>
+				<AuthFooterLink label="New to Latent?" href="/signup">
+					Create account
+				</AuthFooterLink>
 			}
 		>
 			<form
@@ -59,29 +57,52 @@ export default function LoginPage() {
 				}}
 			>
 				<div className="grid gap-1.5">
-					<Label htmlFor="email">Email</Label>
+					<Label htmlFor="email" className="text-sm font-medium text-white">
+						Email
+					</Label>
 					<Input
 						id="email"
 						type="email"
+						placeholder="you@example.com"
 						value={email}
 						autoComplete="email"
 						required
+						className="h-10 border-white/10 bg-[#111827] text-white shadow-none transition-colors duration-200 ease-in-out placeholder:text-slate-500 focus-visible:border-[#0EA5E9] focus-visible:ring-[#0EA5E9]/40"
 						onChange={(event) => setEmail(event.target.value)}
 					/>
 				</div>
 				<div className="grid gap-1.5">
-					<Label htmlFor="password">Password</Label>
-					<Input
-						id="password"
-						type="password"
-						value={password}
-						autoComplete="current-password"
-						required
-						onChange={(event) => setPassword(event.target.value)}
-					/>
+					<Label htmlFor="password" className="text-sm font-medium text-white">
+						Password
+					</Label>
+					<div className="relative">
+						<Input
+							id="password"
+							type={showPassword ? 'text' : 'password'}
+							value={password}
+							autoComplete="current-password"
+							required
+							className="h-10 border-white/10 bg-[#111827] pr-11 text-white shadow-none transition-colors duration-200 ease-in-out placeholder:text-slate-500 focus-visible:border-[#0EA5E9] focus-visible:ring-[#0EA5E9]/40"
+							onChange={(event) => setPassword(event.target.value)}
+						/>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							aria-label={showPassword ? 'Hide password' : 'Show password'}
+							className="text-muted-foreground absolute right-1 top-1/2 size-8 -translate-y-1/2 shadow-none transition-colors duration-200 ease-in-out hover:bg-white/[0.04] hover:text-white"
+							onClick={() => setShowPassword((current) => !current)}
+						>
+							{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+						</Button>
+					</div>
 				</div>
-				<label className="text-muted-foreground flex cursor-pointer items-start gap-2 text-sm leading-5">
+				<Label
+					htmlFor="remember-login"
+					className="text-muted-foreground flex cursor-pointer items-start gap-2 text-sm font-normal leading-5"
+				>
 					<Checkbox
+						id="remember-login"
 						checked={rememberMe}
 						onCheckedChange={(checked) => setRememberMe(checked === true)}
 						aria-label="Remember this login"
@@ -93,9 +114,13 @@ export default function LoginPage() {
 							Leave unchecked to require this login screen again after the tab session ends.
 						</span>
 					</span>
-				</label>
+				</Label>
 				{error ? <p className="text-negative text-sm">{error}</p> : null}
-				<Button type="submit" disabled={submitting}>
+				<Button
+					type="submit"
+					disabled={submitting}
+					className="h-10 bg-gradient-to-r from-[#0EA5E9] to-[#6366F1] font-medium text-white shadow-none transition-all duration-200 ease-in-out hover:border-[#0EA5E9]/40 hover:shadow-[0_0_20px_rgba(14,165,233,0.2)]"
+				>
 					{submitting ? 'Logging in...' : 'Login'}
 				</Button>
 			</form>

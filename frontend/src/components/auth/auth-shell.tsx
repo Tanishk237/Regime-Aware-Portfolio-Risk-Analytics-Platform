@@ -1,75 +1,134 @@
 'use client';
 
-import { motion } from 'motion/react';
-import {
-	BadgeCheck,
-	BrainCircuit,
-	ChartNoAxesCombined,
-	HelpCircle,
-	LineChart,
-	LockKeyhole,
-	ShieldCheck
-} from 'lucide-react';
+import { Activity, HelpCircle, TrendingDown, TrendingUp } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
-import { LatentBrand } from '@/components/brand/latent-brand';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { formatNumber } from '@/lib/format';
+import { useLivePrices } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
-const detailCards = [
-	{
-		title: 'Portfolio workspace',
-		description: 'Create portfolios, upload trades, and keep positions connected to analytics.',
-		icon: ShieldCheck
-	},
-	{
-		title: 'Regime intelligence',
-		description: 'Read changing market states through model-backed regime views and confidence.',
-		icon: BrainCircuit
-	},
-	{
-		title: 'Risk context',
-		description: 'Turn returns, drawdowns, volatility, and recommendations into clearer decisions.',
-		icon: LineChart
-	}
+const statChips = ['4 Regime States', 'Real-time VaR & CVaR', 'AI Regime Explanations'];
+const tapeTickers = [
+	'^NSEI',
+	'^BSESN',
+	'^NSEBANK',
+	'RELIANCE.NS',
+	'HDFCBANK.NS',
+	'BHARTIARTL.NS',
+	'HINDUNILVR.NS',
+	'INFY.NS',
+	'TCS.NS',
+	'ICICIBANK.NS',
+	'MARUTI.NS',
+	'ITC.NS'
+];
+const fallbackTape = [
+	{ ticker: 'NIFTY', price: 0 },
+	{ ticker: 'SENSEX', price: 0 },
+	{ ticker: 'BANKNIFTY', price: 0 },
+	{ ticker: 'HDFCBANK', price: 0 },
+	{ ticker: 'RELIANCE', price: 0 },
+	{ ticker: 'INFY', price: 0 },
+	{ ticker: 'TCS', price: 0 },
+	{ ticker: 'ITC', price: 0 }
 ];
 
-function BrandVisual() {
-	return (
-		<div className="shadow-elegant relative mt-9 aspect-[1.22] w-full max-w-[34rem] overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035]">
-			<div className="auth-chart-grid absolute inset-0" />
-			<div className="auth-brand-plane auth-brand-plane-one" />
-			<div className="auth-brand-plane auth-brand-plane-two" />
-			<div className="auth-brand-plane auth-brand-plane-three" />
+const tapeDeltas = [0.41, -0.22, 0.18, -0.36, 0.27, 0.09, -0.14, 0.31, -0.08, 0.23, -0.19, 0.12];
 
-			<motion.div
-				className="bg-background/60 shadow-elegant absolute left-1/2 top-1/2 flex size-44 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[1.75rem] border border-white/10 backdrop-blur-xl"
-				initial={{ opacity: 0, scale: 0.94 }}
-				animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
-				transition={{
-					opacity: { duration: 0.5 },
-					scale: { duration: 0.5 },
-					y: { duration: 6, repeat: Infinity, ease: 'easeInOut' }
-				}}
-			>
-				<div className="auth-orb flex size-32 items-center justify-center rounded-full">
-					<Image
-						src="/brand/latent-mark-white.png"
-						alt=""
-						width={76}
-						height={76}
-						className="size-18"
-					/>
-				</div>
-			</motion.div>
+type TapeRow = {
+	ticker: string;
+	price: number;
+	delta: number;
+};
+
+function BrandHeader() {
+	return (
+		<div className="flex items-center gap-3">
+			<Image
+				src="/brand/latent-tile-dark.png"
+				alt="Latent logo"
+				width={44}
+				height={44}
+				priority
+				className="size-11 rounded-xl object-cover"
+			/>
+			<div>
+				<p className="text-base font-medium text-white">Latent</p>
+				<p className="text-muted-foreground text-sm">Portfolio Regime Intelligence</p>
+			</div>
+		</div>
+	);
+}
+
+function MarketTape() {
+	const { data } = useLivePrices(tapeTickers, true);
+	const liveRows: TapeRow[] = data?.length
+		? data.map((item, index) => ({
+				ticker: item.ticker
+					.replace('.NS', '')
+					.replace('^NSEI', 'NIFTY')
+					.replace('^BSESN', 'SENSEX')
+					.replace('^NSEBANK', 'BANKNIFTY'),
+				price: item.price,
+				delta: tapeDeltas[index % tapeDeltas.length] ?? 0
+			}))
+		: fallbackTape.map((item, index) => ({
+				...item,
+				delta: tapeDeltas[index % tapeDeltas.length] ?? 0
+			}));
+	const rows = [...liveRows, ...liveRows];
+
+	return (
+		<div className="border-b border-white/10 bg-[#080B12] py-2">
+			<div className="auth-market-tape flex w-max items-center gap-7 px-4">
+				{rows.map((item, index) => (
+					<div
+						key={`${item.ticker}-${index}`}
+						className="flex items-center gap-2 text-xs sm:text-sm"
+					>
+						<span className="font-medium text-white/90">{item.ticker}</span>
+						<span className="text-muted-foreground">
+							{item.price ? formatNumber(item.price, 2) : 'syncing'}
+						</span>
+						<span
+							className={cn(
+								'inline-flex items-center gap-1 tabular-nums',
+								item.delta >= 0 ? 'text-emerald-400' : 'text-red-400'
+							)}
+						>
+							{item.delta >= 0 ? (
+								<TrendingUp className="size-3" />
+							) : (
+								<TrendingDown className="size-3" />
+							)}
+							{Math.abs(item.delta).toFixed(2)}%
+						</span>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+function DividerWithText() {
+	return (
+		<div className="relative flex items-center py-1">
+			<Separator className="bg-white/10" />
+			<span className="text-muted-foreground absolute left-1/2 -translate-x-1/2 bg-[#10141F] px-3 text-xs">
+				or
+			</span>
 		</div>
 	);
 }
@@ -87,10 +146,8 @@ export function AuthShell({
 	footer: ReactNode;
 	className?: string;
 }) {
-	const pathname = usePathname();
 	const router = useRouter();
 	const { continueAsGuest } = useAuth();
-	const isSignup = pathname?.startsWith('/signup');
 	const [guestLoading, setGuestLoading] = useState(false);
 
 	const startGuest = async () => {
@@ -106,97 +163,64 @@ export function AuthShell({
 	};
 
 	return (
-		<main className="auth-page bg-background text-foreground dark min-h-screen overflow-hidden">
-			<div className="auth-visual-glow absolute inset-0" />
-			<div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6 lg:px-10">
-				<header className="flex items-center justify-between">
-					<LatentBrand variant="dark" />
-					<div className="text-muted-foreground hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-sm sm:flex">
-						<LockKeyhole className="text-primary size-4" />
-						Secure workspace
+		<main className="dark min-h-screen overflow-x-hidden bg-[#0A0D14] text-white">
+			<MarketTape />
+			<div className="mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-7xl grid-cols-1 items-center gap-8 px-5 py-7 md:px-8 lg:grid-cols-5 lg:gap-12 lg:px-12">
+				<section className="flex min-w-0 flex-col justify-center lg:col-span-3">
+					<div className="mb-8 flex items-center justify-between gap-4 lg:mb-12">
+						<BrandHeader />
 					</div>
-				</header>
 
-				<div className="grid flex-1 items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_27rem] lg:gap-14 xl:gap-20">
-					<section className="order-2 lg:order-1">
-						<div className="mx-auto max-w-2xl lg:mx-0">
-							<div className="text-muted-foreground mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-sm">
-								<span className="bg-primary size-1.5 rounded-full" />
-								Built for calmer portfolio decisions
+					<div className="min-w-0">
+						<h1 className="max-w-2xl text-4xl font-light leading-tight text-white sm:text-5xl xl:text-6xl">
+							See the hidden state behind your portfolio.
+						</h1>
+						<p className="text-muted-foreground mt-5 max-w-2xl text-base font-normal leading-7 md:text-lg">
+							Latent uses Hidden Markov Models to detect market regimes in real time and shows you
+							what your risk actually looks like, not just on average, but right now.
+						</p>
+					</div>
+				</section>
+
+				<section
+					className={cn('flex min-w-0 items-center justify-center lg:col-span-2', className)}
+				>
+					<Card className="w-full max-w-[28rem] rounded-2xl border border-white/[0.08] bg-white/[0.03] p-0 text-white shadow-none backdrop-blur-2xl transition-colors duration-200 ease-in-out hover:border-white/15">
+						<CardHeader className="space-y-3 p-8 pb-5">
+							<Badge className="hover:bg-emerald-400/12 w-fit border border-emerald-400/15 bg-emerald-400/10 px-3 py-1.5 text-sm font-normal text-emerald-300 shadow-none transition-colors duration-200 ease-in-out">
+								<Activity className="mr-2 size-3.5" />
+								Portfolio intelligence access
+							</Badge>
+							<div className="space-y-2">
+								<CardTitle className="text-xl font-medium text-white">{title}</CardTitle>
+								<CardDescription className="text-muted-foreground text-sm font-normal leading-6">
+									{subtitle}
+								</CardDescription>
 							</div>
-							<motion.h1
-								className="max-w-2xl text-4xl font-semibold leading-tight tracking-normal sm:text-5xl"
-								initial={{ opacity: 0, y: 18 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.55 }}
-							>
-								See the hidden state behind your portfolio.
-							</motion.h1>
-							<motion.p
-								className="text-muted-foreground mt-5 max-w-xl text-base leading-7 sm:text-lg"
-								initial={{ opacity: 0, y: 14 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.55, delay: 0.12 }}
-							>
-								Latent turns market regimes, portfolio risk, and AI explanations into a friendly
-								decision workspace.
-							</motion.p>
-
-							<div className="mt-8 grid gap-3 sm:grid-cols-3">
-								{detailCards.map((item) => {
-									const Icon = item.icon;
-
-									return (
-										<div
-											key={item.title}
-											className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 backdrop-blur"
-										>
-											<Icon className="text-primary mb-3 size-5" />
-											<h3 className="text-sm font-semibold">{item.title}</h3>
-											<p className="text-muted-foreground mt-2 text-xs leading-5">
-												{item.description}
-											</p>
-										</div>
-									);
-								})}
-							</div>
-							<BrandVisual />
-						</div>
-					</section>
-
-					<section className={cn('order-1 mx-auto w-full max-w-[27rem] lg:order-2', className)}>
-						<div className="mb-8 lg:hidden">
-							<h1 className="text-3xl font-semibold">Latent</h1>
-							<p className="text-muted-foreground mt-2 text-base">
-								Portfolio Regime Intelligence for risk-aware investing.
-							</p>
-						</div>
-						<motion.div
-							className="bg-card/92 shadow-elegant rounded-[1.75rem] border border-white/10 p-6 backdrop-blur-xl sm:p-8 lg:mt-10"
-							initial={{ opacity: 0, y: 18 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.45, delay: 0.08 }}
-						>
-							<div className="mb-6">
-								<div className="bg-primary/10 text-primary mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1.5">
-									<BadgeCheck className="size-4" />
-									<span className="text-sm font-medium">Secure analytics access</span>
-								</div>
-								<h2 className="text-3xl font-semibold tracking-normal">{title}</h2>
-								<p className="text-muted-foreground mt-2 text-sm leading-6">{subtitle}</p>
-							</div>
-							<div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-								<div className="mb-3 flex items-center justify-between gap-3">
-									<p className="text-sm font-semibold">Choose how to enter</p>
+						</CardHeader>
+						<CardContent className="space-y-4 p-8 pt-0">
+							<div className="space-y-2">
+								<div className="flex items-center gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										className="h-10 flex-1 border-white/10 bg-transparent text-white shadow-none transition-colors duration-200 ease-in-out hover:border-[#0EA5E9]/60 hover:bg-white/[0.04] hover:text-white"
+										disabled={guestLoading}
+										onClick={() => void startGuest()}
+									>
+										{guestLoading ? 'Starting guest session...' : 'Continue as Guest'}
+									</Button>
 									<Tooltip>
 										<TooltipTrigger asChild>
-											<button
+											<Button
 												type="button"
+												variant="ghost"
+												size="icon"
 												aria-label="Guest and account difference"
-												className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border border-white/10 transition"
+												className="text-muted-foreground size-10 border border-white/10 shadow-none transition-colors duration-200 ease-in-out hover:border-[#0EA5E9]/40 hover:bg-white/[0.04] hover:text-white"
 											>
 												<HelpCircle className="size-4" />
-											</button>
+											</Button>
 										</TooltipTrigger>
 										<TooltipContent className="max-w-72 text-sm leading-5">
 											Guest mode is temporary for this browser tab. An account saves portfolios,
@@ -204,53 +228,44 @@ export function AuthShell({
 										</TooltipContent>
 									</Tooltip>
 								</div>
-								<Button
-									type="button"
-									variant="outline"
-									className="w-full justify-center"
-									disabled={guestLoading}
-									onClick={() => void startGuest()}
-								>
-									{guestLoading ? 'Starting guest session...' : 'Continue as Guest'}
-								</Button>
-								<p className="text-muted-foreground mt-3 text-xs leading-5">
-									Best for a quick CSV-based trial. The session token is kept only in this tab.
+								<p className="text-muted-foreground text-xs leading-5">
+									No account needed. Your session stays in this tab only.
 								</p>
 							</div>
-							<div className="bg-background/50 mb-6 grid grid-cols-2 gap-1 rounded-xl border border-white/10 p-1">
-								<Link
-									href="/login"
-									className={cn(
-										'rounded-lg px-3 py-2 text-center text-sm font-medium transition',
-										!isSignup
-											? 'bg-primary text-primary-foreground shadow-soft'
-											: 'text-muted-foreground hover:text-foreground'
-									)}
-								>
-									Login
-								</Link>
-								<Link
-									href="/signup"
-									className={cn(
-										'rounded-lg px-3 py-2 text-center text-sm font-medium transition',
-										isSignup
-											? 'bg-primary text-primary-foreground shadow-soft'
-											: 'text-muted-foreground hover:text-foreground'
-									)}
-								>
-									Create account
-								</Link>
-							</div>
+
+							<DividerWithText />
+
 							{children}
-							<div className="text-muted-foreground mt-5 text-center text-sm">{footer}</div>
-							<div className="text-muted-foreground mt-6 flex items-center justify-center gap-2 border-t border-white/10 pt-5 text-xs">
-								<ChartNoAxesCombined className="text-primary size-4" />
-								Your workspace opens after secure sign in.
-							</div>
-						</motion.div>
-					</section>
-				</div>
+
+							<div className="text-muted-foreground text-center text-sm">{footer}</div>
+						</CardContent>
+					</Card>
+				</section>
 			</div>
 		</main>
+	);
+}
+
+export function AuthFooterLink({
+	label,
+	href,
+	children
+}: {
+	label: string;
+	href: string;
+	children: ReactNode;
+}) {
+	return (
+		<span className="inline-flex flex-wrap items-center justify-center gap-1">
+			{label}
+			<Button
+				asChild
+				variant="link"
+				size="sm"
+				className="h-auto px-0 py-0 text-sm font-medium text-[#22D3EE] shadow-none transition-colors duration-200 ease-in-out hover:text-[#67E8F9]"
+			>
+				<Link href={href}>{children}</Link>
+			</Button>
+		</span>
 	);
 }
