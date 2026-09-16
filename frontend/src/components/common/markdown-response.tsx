@@ -52,14 +52,26 @@ export function MarkdownResponse({ content, className }: { content: string; clas
 		if (/^#{1,6}\s/.test(line)) {
 			const level = line.match(/^#+/)?.[0].length ?? 1;
 			const text = line.replace(/^#+\s*/, '');
-			blocks.push(
-				<p
-					key={`h-${index}`}
-					className={cn('mb-1 mt-3 font-semibold', level <= 2 ? 'text-base' : 'text-sm')}
-				>
-					{inline(text)}
-				</p>
-			);
+			const headingClass = cn('mb-1 mt-3 font-semibold', level <= 2 ? 'text-base' : 'text-sm');
+			if (level === 1) {
+				blocks.push(
+					<h2 key={`h-${index}`} className={headingClass}>
+						{inline(text)}
+					</h2>
+				);
+			} else if (level === 2) {
+				blocks.push(
+					<h3 key={`h-${index}`} className={headingClass}>
+						{inline(text)}
+					</h3>
+				);
+			} else {
+				blocks.push(
+					<h4 key={`h-${index}`} className={headingClass}>
+						{inline(text)}
+					</h4>
+				);
+			}
 			return;
 		}
 		if (/^\s*\|.*\|\s*$/.test(line)) {

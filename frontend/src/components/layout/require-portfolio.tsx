@@ -1,11 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Briefcase, Plus, ScrollText, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { EmptyState } from '@/components/common/states';
 import { Button } from '@/components/ui/button';
 import { useSelectedPortfolio } from '@/lib/portfolio-context';
+import { useDemoPortfolio } from '@/lib/queries';
 
 /** Renders children only when a portfolio is selected, otherwise a CTA empty state. */
 export function RequirePortfolio({
@@ -37,6 +40,7 @@ export function RequirePortfolio({
 								<Plus className="size-4" /> Create Portfolio
 							</Link>
 						</Button>
+						<DemoPortfolioButton />
 					</div>
 				}
 			/>
@@ -45,6 +49,34 @@ export function RequirePortfolio({
 
 	if (!selectedId) return null;
 	return <>{children(selectedId)}</>;
+}
+
+function DemoPortfolioButton() {
+	const router = useRouter();
+	const { select } = useSelectedPortfolio();
+	const demoPortfolio = useDemoPortfolio();
+
+	const createDemo = async () => {
+		try {
+			const result = await demoPortfolio.create.mutateAsync();
+			select(result.portfolio.id);
+			toast.success('Demo portfolio is ready');
+			router.push('/dashboard');
+		} catch {
+			toast.error('Could not prepare the demo portfolio.');
+		}
+	};
+
+	return (
+		<Button
+			size="sm"
+			variant="ghost"
+			onClick={() => void createDemo()}
+			disabled={demoPortfolio.create.isPending}
+		>
+			{demoPortfolio.create.isPending ? 'Preparing demo...' : 'Try Demo'}
+		</Button>
+	);
 }
 
 export function NoTradesState() {

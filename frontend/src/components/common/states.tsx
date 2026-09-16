@@ -23,7 +23,7 @@ export function EmptyState({
 	return (
 		<div
 			className={cn(
-				'bg-surface/70 flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-12 text-center shadow-inner',
+				'bg-surface/55 flex flex-col items-center justify-center rounded-lg border border-dashed px-6 py-12 text-center',
 				className
 			)}
 		>
@@ -51,7 +51,7 @@ export function ErrorState({
 	return (
 		<div
 			className={cn(
-				'border-negative/30 bg-negative-muted/60 shadow-soft flex flex-col items-start gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between',
+				'border-negative/30 bg-negative-muted/60 flex flex-col items-start gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between',
 				className
 			)}
 		>
@@ -83,7 +83,7 @@ export function WarningState({
 	return (
 		<div
 			className={cn(
-				'border-warning/30 bg-warning-muted/60 shadow-soft flex items-start gap-2.5 rounded-xl border p-4',
+				'border-warning/30 bg-warning-muted/60 flex items-start gap-2.5 rounded-lg border p-4',
 				className
 			)}
 		>

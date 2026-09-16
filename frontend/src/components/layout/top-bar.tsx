@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { LogOut, Moon, Plus, RefreshCw, Sun, Upload, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Bell, LogOut, Plus, RefreshCw, RotateCcw, Upload, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -26,9 +25,10 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { useAuth } from '@/lib/auth';
 import { useSelectedPortfolio } from '@/lib/portfolio-context';
-import { useHealth } from '@/lib/queries';
+import { useAlerts, useDemoPortfolio, useHealth, useRefreshIntelligence } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 export function PortfolioSelector({ className }: { className?: string }) {
@@ -113,35 +113,42 @@ function ApiStatus() {
 	);
 }
 
-function ThemeToggle() {
-	const [dark, setDark] = useState(false);
-	useEffect(() => {
-		const stored = window.localStorage.getItem('rapra.theme') === 'dark';
-		setDark(stored);
-		document.documentElement.classList.toggle('dark', stored);
-	}, []);
-
-	return (
-		<Button
-			variant="ghost"
-			size="icon"
-			aria-label="Toggle theme"
-			onClick={() => {
-				const next = !dark;
-				setDark(next);
-				document.documentElement.classList.toggle('dark', next);
-				window.localStorage.setItem('rapra.theme', next ? 'dark' : 'light');
-			}}
-		>
-			{dark ? <Moon className="size-4" /> : <Sun className="size-4" />}
-		</Button>
-	);
-}
-
 export function TopBar() {
 	const queryClient = useQueryClient();
 	const { user, signOut } = useAuth();
+	const { selected, select } = useSelectedPortfolio();
+	const alerts = useAlerts(selected?.id);
+	const unreadAlerts = (alerts.data ?? []).filter((item) => !item.is_read);
+	const refreshIntelligence = useRefreshIntelligence(selected?.id);
+	const demoPortfolio = useDemoPortfolio();
 	const router = useRouter();
+	const resetDemo = async () => {
+		try {
+			const result = await demoPortfolio.reset.mutateAsync();
+			select(result.portfolio.id);
+			toast.success('Demo portfolio reset');
+			router.replace('/dashboard');
+		} catch {
+			toast.error('Could not reset the demo portfolio.');
+		}
+	};
+	const refreshWorkspace = async () => {
+		try {
+			if (selected?.id) {
+				await refreshIntelligence.mutateAsync();
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: ['portfolio', selected.id] }),
+					queryClient.invalidateQueries({ queryKey: ['risk', selected.id] }),
+					queryClient.invalidateQueries({ queryKey: ['regime', selected.id] })
+				]);
+			} else {
+				await queryClient.invalidateQueries();
+			}
+			toast.success('Analytics refreshed');
+		} catch {
+			toast.error('Could not refresh the workspace.');
+		}
+	};
 
 	return (
 		<header className="bg-background/88 sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] backdrop-blur-xl sm:px-5">
@@ -153,10 +160,8 @@ export function TopBar() {
 				<Button
 					variant="outline"
 					size="sm"
-					onClick={async () => {
-						await queryClient.invalidateQueries();
-						toast.success('Analytics refreshed');
-					}}
+					onClick={() => void refreshWorkspace()}
+					disabled={refreshIntelligence.isPending}
 				>
 					<RefreshCw className="size-3.5" />
 					<span className="hidden sm:inline">Refresh</span>
@@ -164,6 +169,47 @@ export function TopBar() {
 				<div className="hidden sm:block">
 					<ApiStatus />
 				</div>
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button
+							variant="ghost"
+							size="icon"
+							className="relative"
+							aria-label={`Portfolio alerts, ${unreadAlerts.length} unread`}
+						>
+							<Bell className="size-4" />
+							{unreadAlerts.length ? (
+								<span className="bg-negative text-negative-foreground absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full text-[10px] font-medium">
+									{Math.min(unreadAlerts.length, 9)}
+								</span>
+							) : null}
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-80">
+						<DropdownMenuLabel>Portfolio alerts</DropdownMenuLabel>
+						<DropdownMenuSeparator />
+						{unreadAlerts.length ? (
+							unreadAlerts.slice(0, 3).map((alert) => (
+								<DropdownMenuItem key={alert.id} asChild className="items-start py-2.5">
+									<Link href="/recommendations">
+										<span className="min-w-0">
+											<span className="block truncate text-sm font-medium">{alert.title}</span>
+											<span className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
+												{alert.evidence ?? alert.description}
+											</span>
+										</span>
+									</Link>
+								</DropdownMenuItem>
+							))
+						) : (
+							<DropdownMenuItem disabled>No unread portfolio alerts</DropdownMenuItem>
+						)}
+						<DropdownMenuSeparator />
+						<DropdownMenuItem asChild>
+							<Link href="/recommendations">Open recommendation center</Link>
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
 				<ThemeToggle />
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
@@ -191,6 +237,15 @@ export function TopBar() {
 							<p className="text-muted-foreground text-xs">{user?.email ?? 'Signed in'}</p>
 						</DropdownMenuLabel>
 						<DropdownMenuSeparator />
+						{selected?.is_demo ? (
+							<DropdownMenuItem
+								disabled={demoPortfolio.reset.isPending}
+								onClick={() => void resetDemo()}
+							>
+								<RotateCcw className="size-4" />
+								{demoPortfolio.reset.isPending ? 'Resetting demo...' : 'Reset demo portfolio'}
+							</DropdownMenuItem>
+						) : null}
 						<DropdownMenuItem onClick={() => router.push('/settings')}>
 							<User className="size-4" /> Settings
 						</DropdownMenuItem>
@@ -221,10 +276,10 @@ export function PageHeader({
 	actions?: React.ReactNode;
 }) {
 	return (
-		<div className="border-border/70 bg-card/50 shadow-soft rounded-2xl border px-4 py-4 backdrop-blur sm:px-5">
+		<div className="page-header-surface border-border/70 border-b pb-4 pt-1">
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<div>
-					<h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
+					<h1 className="text-2xl font-semibold tracking-normal sm:text-[1.7rem]">{title}</h1>
 					{description ? (
 						<p className="text-muted-foreground mt-1 max-w-3xl text-sm leading-6">{description}</p>
 					) : null}

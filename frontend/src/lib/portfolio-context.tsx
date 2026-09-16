@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import { usePortfolios } from '@/lib/queries';
+import { useAuth } from '@/lib/auth';
 import type { Portfolio } from '@/lib/types';
 
 const STORAGE_KEY = 'rapra.selectedPortfolio';
@@ -18,6 +19,7 @@ type PortfolioContextValue = {
 const PortfolioContext = createContext<PortfolioContextValue | null>(null);
 
 export function SelectedPortfolioProvider({ children }: { children: React.ReactNode }) {
+	const { user } = useAuth();
 	const { data, isLoading, error, refetch } = usePortfolios();
 	const portfolios = useMemo(() => data ?? [], [data]);
 	const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
@@ -26,12 +28,12 @@ export function SelectedPortfolioProvider({ children }: { children: React.ReactN
 		if (portfolios.length === 0) return;
 		setSelectedId((current) => {
 			if (current && portfolios.some((p) => p.id === current)) return current;
-			const stored =
-				typeof window === 'undefined' ? null : window.localStorage.getItem(STORAGE_KEY);
+			const storage = user?.isGuest ? window.sessionStorage : window.localStorage;
+			const stored = typeof window === 'undefined' ? null : storage.getItem(STORAGE_KEY);
 			if (stored && portfolios.some((p) => p.id === stored)) return stored;
 			return portfolios[0]?.id;
 		});
-	}, [portfolios]);
+	}, [portfolios, user?.isGuest]);
 
 	const value = useMemo<PortfolioContextValue>(
 		() => ({
@@ -41,12 +43,13 @@ export function SelectedPortfolioProvider({ children }: { children: React.ReactN
 			selectedId,
 			selected: portfolios.find((p) => p.id === selectedId),
 			select: (id: string) => {
-				window.localStorage.setItem(STORAGE_KEY, id);
+				const storage = user?.isGuest ? window.sessionStorage : window.localStorage;
+				storage.setItem(STORAGE_KEY, id);
 				setSelectedId(id);
 			},
 			refetch: () => void refetch()
 		}),
-		[portfolios, isLoading, error, selectedId, refetch]
+		[portfolios, isLoading, error, selectedId, refetch, user?.isGuest]
 	);
 
 	return <PortfolioContext.Provider value={value}>{children}</PortfolioContext.Provider>;

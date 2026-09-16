@@ -5,8 +5,10 @@ import { useEffect, useState } from 'react';
 
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ThemeProvider } from '@/components/theme/theme-provider';
 import { AuthProvider } from '@/lib/auth';
 import { AUTH_FAILURE_EVENT } from '@/lib/auth-events';
+import { ApiError } from '@/lib/api';
 
 export function RootProviders({ children }: { children: React.ReactNode }) {
 	const [queryClient] = useState(
@@ -15,8 +17,14 @@ export function RootProviders({ children }: { children: React.ReactNode }) {
 				defaultOptions: {
 					queries: {
 						staleTime: 30_000,
+						gcTime: 5 * 60_000,
 						refetchOnWindowFocus: false,
-						retry: 1
+						retry: (failureCount, error) => {
+							if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+								return error.status === 408 || error.status === 429 ? failureCount < 1 : false;
+							}
+							return failureCount < 1;
+						}
 					}
 				}
 			})
@@ -32,13 +40,15 @@ export function RootProviders({ children }: { children: React.ReactNode }) {
 	}, [queryClient]);
 
 	return (
-		<QueryClientProvider client={queryClient}>
-			<AuthProvider>
-				<TooltipProvider delayDuration={200}>
-					{children}
-					<Toaster richColors position="top-right" />
-				</TooltipProvider>
-			</AuthProvider>
-		</QueryClientProvider>
+		<ThemeProvider>
+			<QueryClientProvider client={queryClient}>
+				<AuthProvider>
+					<TooltipProvider delayDuration={200}>
+						{children}
+						<Toaster richColors position="top-right" />
+					</TooltipProvider>
+				</AuthProvider>
+			</QueryClientProvider>
+		</ThemeProvider>
 	);
 }
