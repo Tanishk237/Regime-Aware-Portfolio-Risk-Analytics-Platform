@@ -2,6 +2,9 @@ export { keys } from './api/query-keys';
 export { useHealth, useVersion } from './api/system';
 export {
 	useCsvUpload,
+	useCsvPreview,
+	useCsvResolve,
+	useDemoPortfolio,
 	usePortfolio,
 	usePortfolioMutations,
 	usePortfolios,
@@ -15,3 +18,13 @@ export type { RegimeParams, RiskParams } from './api/analytics';
 export { useRegime, useRisk } from './api/analytics';
 export type { HistoricalPriceParams, MarketParams } from './api/market';
 export { useHistoricalPrices, useLivePrices, useMarketSnapshot } from './api/market';
+export {
+	useAlerts,
+	useAIReports,
+	useIntelligence,
+	useMetricExplanation,
+	useRecommendations,
+	useRefreshIntelligence,
+	useRiskProfile,
+	useStressScenario
+} from './api/intelligence';

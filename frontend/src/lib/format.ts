@@ -75,16 +75,38 @@ export function signClass(value?: number | null) {
 
 /** Normalises a series that may arrive as a date->value map or as an array. */
 export function toSeries(
-	input?: Record<string, number> | Array<{ date: string; value: number }> | null
+	input?:
+		| Record<string, number>
+		| Array<{
+				date: string;
+				value?: number;
+				cumulative_return?: number;
+				drawdown?: number;
+				daily_return?: number;
+				rolling_return?: number;
+				rolling_volatility?: number;
+		  }>
+		| null
 ): Array<{ date: string; value: number }> {
 	if (!input) return [];
 	if (Array.isArray(input)) {
 		return input
-			.filter((d) => d && d.date !== undefined)
-			.map((d) => ({ date: String(d.date), value: Number(d.value) }));
+			.map((point) => ({
+				date: String(point?.date ?? ''),
+				value: Number(
+					point?.value ??
+						point?.cumulative_return ??
+						point?.drawdown ??
+						point?.daily_return ??
+						point?.rolling_return ??
+						point?.rolling_volatility
+				)
+			}))
+			.filter((point) => Boolean(point.date) && Number.isFinite(point.value));
 	}
 	return Object.entries(input)
 		.map(([date, value]) => ({ date, value: Number(value) }))
+		.filter((point) => Boolean(point.date) && Number.isFinite(point.value))
 		.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 

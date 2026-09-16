@@ -5,6 +5,7 @@ export type Portfolio = {
 	description?: string | null;
 	base_currency?: string | null;
 	benchmark?: string | null;
+	is_demo?: boolean;
 	created_at?: string | null;
 	updated_at?: string | null;
 };
@@ -42,6 +43,17 @@ export type Position = {
 	market_weight?: number | null;
 	cost_weight?: number | null;
 	updated_at?: string | null;
+	name?: string | null;
+	sector?: string | null;
+	industry?: string | null;
+};
+
+export type SectorAllocation = {
+	sector: string;
+	market_value: number;
+	weight: number;
+	holdings_count: number;
+	tickers: string[];
 };
 
 export type PortfolioSummary = {
@@ -141,6 +153,15 @@ export type RegimeAnalytics = {
 	regime_duration?: RegimeAnalytics['durations'];
 	fallback_used?: boolean;
 	generated_at?: string;
+	explanation?: {
+		summary: string;
+		drivers: string[];
+		current_duration_days: number;
+		likely_next_state?: string | null;
+		likely_next_probability?: number | null;
+		model_mode: string;
+		probability_note: string;
+	};
 };
 
 export type PortfolioReturn = {
@@ -229,4 +250,157 @@ export type VersionInfo = {
 	version?: string;
 	environment?: string;
 	[key: string]: unknown;
+};
+
+export type Citation = {
+	label: string;
+	value: string;
+	source: string;
+	as_of?: string | null;
+};
+
+export type RiskProfile = {
+	id: number;
+	user_id: number;
+	tolerance: 'conservative' | 'moderate' | 'aggressive';
+	horizon_months: number;
+	max_drawdown_tolerance: number;
+	liquidity_needs: 'low' | 'medium' | 'high';
+	income_requirement?: string | null;
+	restrictions: string[];
+	created_at: string;
+	updated_at: string;
+};
+
+export type PortfolioIntelligence = {
+	portfolio_id: number;
+	data_as_of?: string | null;
+	summary: PortfolioSummary;
+	positions: Position[];
+	sector_allocation: SectorAllocation[];
+	risk?: RiskAnalytics | null;
+	regime?: RegimeAnalytics | null;
+	risk_profile: RiskProfile;
+	executive_summary: string[];
+	citations: Citation[];
+	warnings: string[];
+	recommendations: IntelligenceRecommendation[];
+	alerts: PortfolioAlert[];
+};
+
+export type MetricExplanation = {
+	metric: string;
+	title: string;
+	definition: string;
+	value: string;
+	interpretation: string;
+	why_it_matters: string;
+	source: string;
+	data_as_of?: string | null;
+	ask_prompt: string;
+};
+
+export type IntelligenceRecommendation = {
+	id: number;
+	fingerprint: string;
+	severity: 'high' | 'medium' | 'low';
+	category: string;
+	title: string;
+	description: string;
+	evidence: string;
+	action: string;
+	expected_impact: string;
+	confidence: number;
+	is_read: boolean;
+	created_at: string;
+};
+
+export type PortfolioAlert = {
+	id: number;
+	alert_type: string;
+	severity: 'high' | 'medium' | 'low';
+	title: string;
+	description: string;
+	evidence?: string | null;
+	is_read: boolean;
+	detected_at: string;
+};
+
+export type StressScenarioPreview = {
+	name: string;
+	prompt: string;
+	market_shock: number;
+	volatility_shock: number;
+	ticker_shocks: Record<string, number>;
+	assumptions: string[];
+	requires_confirmation: boolean;
+};
+
+export type StressScenarioResult = {
+	id: number;
+	name: string;
+	description?: string | null;
+	value_before: number;
+	value_after: number;
+	estimated_impact: number;
+	estimated_impact_pct: number;
+	historical_var_before?: number | null;
+	historical_var_after?: number | null;
+	position_impacts: Array<{
+		ticker: string;
+		applied_shock: number;
+		value_before: number;
+		value_after: number;
+		impact: number;
+	}>;
+	assumptions: string[];
+	generated_at: string;
+};
+
+export type AIReport = {
+	id: number;
+	portfolio_id: number;
+	report_type: string;
+	title: string;
+	content: string;
+	provider?: string | null;
+	model?: string | null;
+	response_mode: 'provider' | 'local' | 'local_fallback';
+	data_as_of?: string | null;
+	created_at: string;
+};
+
+export type CsvValidationIssue = {
+	row?: number | null;
+	field?: string | null;
+	message: string;
+};
+
+export type CsvPreview = {
+	valid: boolean;
+	total_rows: number;
+	valid_rows: number;
+	duplicate_rows: number;
+	detected_columns: string[];
+	normalized_columns: string[];
+	column_mapping: Record<string, string>;
+	missing_columns: string[];
+	unknown_columns: string[];
+	warnings: CsvValidationIssue[];
+	errors: CsvValidationIssue[];
+	preview: Array<Record<string, unknown>>;
+};
+
+export type CsvResolutionChange = {
+	row?: number | null;
+	field: string;
+	before?: unknown;
+	after?: unknown;
+	reason: string;
+};
+
+export type CsvResolution = {
+	resolved_csv: string;
+	changes: CsvResolutionChange[];
+	report: CsvPreview;
 };

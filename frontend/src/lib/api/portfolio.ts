@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
-import type { Portfolio, TradeInput } from '@/lib/types';
+import type { CsvPreview, CsvResolution, Portfolio, Position, TradeInput } from '@/lib/types';
 
 import {
 	adaptPortfolio,
@@ -92,6 +92,44 @@ export function usePortfolioMutations() {
 	return { create, update, remove };
 }
 
+export type DemoPortfolioResult = {
+	portfolio: Portfolio;
+	tradesCreated: number;
+	analyticsPrecomputed: boolean;
+};
+
+async function requestDemoPortfolio(
+	path: '/portfolio/demo' | '/portfolio/demo/reset'
+): Promise<DemoPortfolioResult> {
+	const response = await api.post<Record<string, unknown>>(path);
+	return {
+		portfolio: adaptPortfolio(response['portfolio']),
+		tradesCreated: Number(response['trades_created'] ?? 0),
+		analyticsPrecomputed: Boolean(response['analytics_precomputed'])
+	};
+}
+
+export function useDemoPortfolio() {
+	const queryClient = useQueryClient();
+	const invalidate = async () => {
+		await queryClient.invalidateQueries({ queryKey: keys.portfolios });
+		await queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+		await queryClient.invalidateQueries({ queryKey: ['risk'] });
+		await queryClient.invalidateQueries({ queryKey: ['regime'] });
+	};
+
+	const create = useMutation({
+		mutationFn: () => requestDemoPortfolio('/portfolio/demo'),
+		onSuccess: invalidate
+	});
+	const reset = useMutation({
+		mutationFn: () => requestDemoPortfolio('/portfolio/demo/reset'),
+		onSuccess: invalidate
+	});
+
+	return { create, reset };
+}
+
 export function useTradeMutations(portfolioId?: string) {
 	const queryClient = useQueryClient();
 	const invalidate = () => {
@@ -127,8 +165,14 @@ export function useTradeMutations(portfolioId?: string) {
 export function useCsvUpload() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (formData: FormData) =>
-			api.upload<Record<string, unknown>>('/portfolio/upload', formData),
+		mutationFn: async (formData: FormData): Promise<CsvUploadResult> => {
+			const response = await api.upload<Record<string, unknown>>('/portfolio/upload', formData);
+			return {
+				portfolio: adaptPortfolio(response['portfolio']),
+				tradesCreated: Number(response['trades_created'] ?? 0),
+				positions: asArray<unknown>(response['positions']).map(adaptPosition)
+			};
+		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: keys.portfolios });
 			queryClient.invalidateQueries({ queryKey: ['portfolio'] });
@@ -137,3 +181,29 @@ export function useCsvUpload() {
 		}
 	});
 }
+
+export function useCsvPreview() {
+	return useMutation({
+		mutationFn: async (file: File): Promise<CsvPreview> => {
+			const formData = new FormData();
+			formData.append('file', file);
+			return api.upload<CsvPreview>('/portfolio/upload/preview', formData);
+		}
+	});
+}
+
+export function useCsvResolve() {
+	return useMutation({
+		mutationFn: async (file: File): Promise<CsvResolution> => {
+			const formData = new FormData();
+			formData.append('file', file);
+			return api.upload<CsvResolution>('/portfolio/upload/resolve', formData);
+		}
+	});
+}
+
+export type CsvUploadResult = {
+	portfolio: Portfolio;
+	tradesCreated: number;
+	positions: Position[];
+};
