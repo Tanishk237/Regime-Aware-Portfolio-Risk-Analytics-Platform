@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from src.api.dependencies import get_current_user
@@ -14,7 +14,20 @@ from src.api.schemas_auth import AuthResponse, LoginRequest, SignupRequest, User
 from src.auth import create_access_token, hash_password, verify_password
 from src.config import Settings, get_settings
 from src.database import get_db
-from src.database.models import User
+from src.database.models import (
+    AIReport,
+    Portfolio,
+    PortfolioAlert,
+    PortfolioReturn,
+    Position,
+    Recommendation,
+    RegimePrediction,
+    RiskProfile,
+    RiskMetric,
+    StressResult,
+    Trade,
+    User,
+)
 
 
 router = APIRouter(prefix="/auth")
@@ -33,6 +46,36 @@ def _token_response(user: User, settings: Settings) -> AuthResponse:
         expires_in=int(expires.total_seconds()),
         user=UserRead.model_validate(user),
     )
+
+
+def _delete_guest_users(db: Session, user_ids) -> None:
+    portfolio_ids = select(Portfolio.id).where(Portfolio.user_id.in_(user_ids))
+    for model in (
+        AIReport,
+        PortfolioAlert,
+        Recommendation,
+        RegimePrediction,
+        RiskMetric,
+        PortfolioReturn,
+        StressResult,
+        Position,
+        Trade,
+    ):
+        db.execute(delete(model).where(model.portfolio_id.in_(portfolio_ids)))
+    db.execute(delete(Portfolio).where(Portfolio.user_id.in_(user_ids)))
+    db.execute(delete(RiskProfile).where(RiskProfile.user_id.in_(user_ids)))
+    db.execute(delete(User).where(User.id.in_(user_ids)))
+    db.commit()
+
+
+def _delete_expired_guest_users(db: Session, settings: Settings) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.guest_data_retention_hours)
+    guest_user_ids = select(User.id).where(
+        User.email.like("%@guest.latent.local"),
+        User.password_hash.is_(None),
+        User.created_at < cutoff,
+    )
+    _delete_guest_users(db, guest_user_ids)
 
 
 def _set_auth_cookie(
@@ -65,6 +108,7 @@ def guest_session(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
+    _delete_expired_guest_users(db, settings)
     user = User(
         email=f"guest-{secrets.token_urlsafe(18).lower()}@guest.latent.local",
         full_name="Guest",
@@ -75,7 +119,7 @@ def guest_session(
     db.commit()
     db.refresh(user)
 
-    expires = timedelta(hours=12)
+    expires = timedelta(minutes=settings.guest_session_expire_minutes)
     token = create_access_token(
         subject=str(user.id),
         secret_key=settings.auth_secret_key,
@@ -167,3 +211,17 @@ def logout(
     settings: Settings = Depends(get_settings),
 ) -> None:
     _clear_auth_cookie(response, settings)
+
+
+@router.delete("/guest-session", status_code=status.HTTP_204_NO_CONTENT)
+def end_guest_session(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    if not user.is_guest:
+        raise AppError(
+            "Only guest sessions can be ended this way.",
+            code="GUEST_SESSION_REQUIRED",
+            status_code=400,
+        )
+    _delete_guest_users(db, [user.id])

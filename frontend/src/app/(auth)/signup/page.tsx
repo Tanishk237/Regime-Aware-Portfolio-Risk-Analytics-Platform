@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AuthFooterLink, AuthShell } from '@/components/auth/auth-shell';
 import { Button } from '@/components/ui/button';
@@ -19,9 +19,12 @@ export default function SignupPage() {
 	const [confirmPassword, setConfirmPassword] = useState('');
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const checkedInitialSession = useRef(false);
 
 	useEffect(() => {
-		if (hydrated && user) router.replace('/dashboard');
+		if (!hydrated || checkedInitialSession.current) return;
+		checkedInitialSession.current = true;
+		if (user) router.replace('/dashboard');
 	}, [hydrated, router, user]);
 
 	const createAccount = async () => {

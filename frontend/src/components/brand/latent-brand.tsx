@@ -3,19 +3,43 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 type LatentBrandProps = {
-	variant?: 'dark' | 'light';
+	variant?: 'dark' | 'light' | 'auto';
 	size?: 'sm' | 'md';
 	showText?: boolean;
 	className?: string;
 };
 
 export function LatentMark({
-	variant = 'dark',
+	variant = 'auto',
 	className
 }: {
-	variant?: 'dark' | 'light';
+	variant?: 'dark' | 'light' | 'auto';
 	className?: string;
 }) {
+	if (variant === 'auto') {
+		return (
+			<span className={cn('relative block overflow-hidden rounded-xl', className)}>
+				<Image
+					src="/brand/latent-tile-light.png"
+					alt="Latent logo"
+					fill
+					sizes="48px"
+					priority
+					className="object-contain dark:hidden"
+				/>
+				<Image
+					src="/brand/latent-tile-dark.png"
+					alt=""
+					fill
+					sizes="48px"
+					priority
+					aria-hidden
+					className="hidden object-contain dark:block"
+				/>
+			</span>
+		);
+	}
+
 	const src = variant === 'dark' ? '/brand/latent-tile-dark.png' : '/brand/latent-tile-light.png';
 	return (
 		<Image
@@ -30,7 +54,7 @@ export function LatentMark({
 }
 
 export function LatentBrand({
-	variant = 'dark',
+	variant = 'auto',
 	size = 'md',
 	showText = true,
 	className

@@ -2,7 +2,7 @@
 
 import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AuthFooterLink, AuthShell } from '@/components/auth/auth-shell';
 import { Button } from '@/components/ui/button';
@@ -21,9 +21,12 @@ export default function LoginPage() {
 	const [rememberMe, setRememberMe] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const checkedInitialSession = useRef(false);
 
 	useEffect(() => {
-		if (hydrated && user) router.replace('/dashboard');
+		if (!hydrated || checkedInitialSession.current) return;
+		checkedInitialSession.current = true;
+		if (user) router.replace('/dashboard');
 	}, [hydrated, router, user]);
 
 	const login = async () => {
@@ -57,7 +60,7 @@ export default function LoginPage() {
 				}}
 			>
 				<div className="grid gap-1.5">
-					<Label htmlFor="email" className="text-sm font-medium text-white">
+					<Label htmlFor="email" className="text-foreground text-sm font-medium">
 						Email
 					</Label>
 					<Input
@@ -67,12 +70,12 @@ export default function LoginPage() {
 						value={email}
 						autoComplete="email"
 						required
-						className="h-10 border-white/10 bg-[#111827] text-white shadow-none transition-colors duration-200 ease-in-out placeholder:text-slate-500 focus-visible:border-[#0EA5E9] focus-visible:ring-[#0EA5E9]/40"
+						className="bg-background/60 focus-visible:border-primary h-10 shadow-none transition-colors duration-200 ease-in-out"
 						onChange={(event) => setEmail(event.target.value)}
 					/>
 				</div>
 				<div className="grid gap-1.5">
-					<Label htmlFor="password" className="text-sm font-medium text-white">
+					<Label htmlFor="password" className="text-foreground text-sm font-medium">
 						Password
 					</Label>
 					<div className="relative">
@@ -82,7 +85,7 @@ export default function LoginPage() {
 							value={password}
 							autoComplete="current-password"
 							required
-							className="h-10 border-white/10 bg-[#111827] pr-11 text-white shadow-none transition-colors duration-200 ease-in-out placeholder:text-slate-500 focus-visible:border-[#0EA5E9] focus-visible:ring-[#0EA5E9]/40"
+							className="bg-background/60 focus-visible:border-primary h-10 pr-11 shadow-none transition-colors duration-200 ease-in-out"
 							onChange={(event) => setPassword(event.target.value)}
 						/>
 						<Button
@@ -90,7 +93,7 @@ export default function LoginPage() {
 							variant="ghost"
 							size="icon"
 							aria-label={showPassword ? 'Hide password' : 'Show password'}
-							className="text-muted-foreground absolute right-1 top-1/2 size-8 -translate-y-1/2 shadow-none transition-colors duration-200 ease-in-out hover:bg-white/[0.04] hover:text-white"
+							className="text-muted-foreground hover:bg-accent hover:text-foreground absolute right-1 top-1/2 size-8 -translate-y-1/2 shadow-none transition-colors duration-200 ease-in-out"
 							onClick={() => setShowPassword((current) => !current)}
 						>
 							{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

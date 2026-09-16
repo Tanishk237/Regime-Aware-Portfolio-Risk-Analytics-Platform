@@ -151,3 +151,17 @@ def test_production_requires_secure_auth_cookie():
         assert "AUTH_COOKIE_SECURE" in str(exc)
     else:
         raise AssertionError("production settings accepted an insecure auth cookie")
+
+
+def test_production_rejects_the_automated_test_market_provider():
+    try:
+        Settings(
+            environment="production",
+            auth_secret_key="a-production-secret-with-enough-length",
+            auth_cookie_secure=True,
+            market_data_provider="test-fixture",
+        )
+    except ValueError as exc:
+        assert "MARKET_DATA_PROVIDER" in str(exc)
+    else:
+        raise AssertionError("production settings accepted the test market provider")

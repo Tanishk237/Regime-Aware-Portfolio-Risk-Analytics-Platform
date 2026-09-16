@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import {
 	createGuestSession,
+	endGuestSession,
 	login,
 	logout,
 	me,
@@ -32,7 +33,8 @@ function toAppUser(user: AuthUser): AppUser {
 	return {
 		id: user.id,
 		name: user.full_name || user.email.split('@')[0] || 'User',
-		email: user.email
+		email: user.email,
+		isGuest: user.is_guest
 	};
 }
 
@@ -183,7 +185,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	const signOut = useCallback(async () => {
-		if (!user?.isGuest) {
+		if (user?.isGuest) {
+			try {
+				await endGuestSession();
+			} catch {
+				// Local cleanup still ends the browser session if the network is unavailable.
+			}
+		} else {
 			try {
 				await logout();
 			} catch {

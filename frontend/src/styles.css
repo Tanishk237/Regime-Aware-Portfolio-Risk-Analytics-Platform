@@ -2,7 +2,6 @@
 @source "../src";
 @import 'tw-animate-css';
 @import '@fontsource-variable/inter';
-@import '@fontsource/ibm-plex-mono';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -226,9 +225,10 @@
 }
 
 @utility num {
-	font-family: var(--font-mono);
+	font-family: var(--font-sans);
 	font-variant-numeric: tabular-nums;
-	font-feature-settings: 'tnum';
+	font-feature-settings: 'tnum', 'ss01';
+	letter-spacing: 0;
 }
 
 @utility bg-gradient-brand {
@@ -295,6 +295,46 @@
 @utility panel-surface {
 	background: var(--gradient-surface);
 	box-shadow: var(--shadow-soft);
+	transition:
+		border-color 200ms ease,
+		background-color 200ms ease,
+		transform 200ms ease;
+}
+
+.panel-surface:hover {
+	border-color: color-mix(in oklab, var(--primary) 24%, var(--border));
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.panel-surface[data-interactive='true']:hover {
+		transform: translateY(-1px);
+	}
+}
+
+.page-header-surface {
+	animation: surface-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.upload-progress-indicator {
+	animation: upload-progress-breathe 1.2s ease-in-out infinite;
+}
+
+.auth-hero-enter {
+	animation: surface-enter 560ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-card-enter {
+	animation: surface-enter 560ms 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-signal-line {
+	stroke-dasharray: 540;
+	stroke-dashoffset: 540;
+	animation: auth-signal-draw 4.8s ease-in-out infinite;
+}
+
+.auth-signal-pulse {
+	animation: auth-signal-pulse 2.4s ease-in-out infinite;
 }
 
 .auth-market-tape {
@@ -310,8 +350,66 @@
 	}
 }
 
+@keyframes surface-enter {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes upload-progress-breathe {
+	0%,
+	100% {
+		opacity: 0.68;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+@keyframes auth-signal-draw {
+	0% {
+		stroke-dashoffset: 540;
+		opacity: 0.35;
+	}
+	45%,
+	75% {
+		stroke-dashoffset: 0;
+		opacity: 1;
+	}
+	100% {
+		stroke-dashoffset: -540;
+		opacity: 0.35;
+	}
+}
+
+@keyframes auth-signal-pulse {
+	0%,
+	100% {
+		opacity: 0.35;
+		transform: scale(0.85);
+	}
+	50% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.auth-market-tape {
+		animation: none;
+	}
+
+	.auth-hero-enter,
+	.auth-card-enter,
+	.page-header-surface,
+	.upload-progress-indicator,
+	.auth-signal-line,
+	.auth-signal-pulse {
 		animation: none;
 	}
 }

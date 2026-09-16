@@ -5,6 +5,7 @@ import { RootProviders } from '@/components/layout/root-providers';
 import '../styles.css';
 
 export const metadata: Metadata = {
+	metadataBase: new URL(process.env['NEXT_PUBLIC_SITE_URL'] ?? 'http://localhost:3000'),
 	title: {
 		default: 'Latent',
 		template: '%s · Latent'
@@ -34,7 +35,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="en" suppressHydrationWarning>
+		<html lang="en" className="dark" suppressHydrationWarning>
+			<head>
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `(function(){try{var t=localStorage.getItem('latent.theme')||localStorage.getItem('rapra.theme');var d=t!=='light';document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light'}catch(e){}})();`
+					}}
+				/>
+			</head>
 			<body>
 				<RootProviders>{children}</RootProviders>
 			</body>

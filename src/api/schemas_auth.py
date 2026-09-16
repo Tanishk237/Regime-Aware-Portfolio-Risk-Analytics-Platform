@@ -11,6 +11,7 @@ class UserRead(BaseModel):
     email: str
     full_name: Optional[str] = None
     is_active: bool
+    is_guest: bool = False
     created_at: datetime
     updated_at: datetime
 

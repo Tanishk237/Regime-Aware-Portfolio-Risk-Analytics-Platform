@@ -5,6 +5,7 @@ export type AuthUser = {
 	email: string;
 	full_name?: string | null;
 	is_active: boolean;
+	is_guest?: boolean;
 	created_at: string;
 	updated_at: string;
 };
@@ -34,4 +35,8 @@ export function me() {
 
 export function logout() {
 	return api.post<void>('/auth/logout');
+}
+
+export function endGuestSession() {
+	return api.del<void>('/auth/guest-session');
 }

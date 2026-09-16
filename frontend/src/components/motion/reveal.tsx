@@ -1,4 +1,10 @@
-import { motion, useMotionTemplate, useMotionValue, useSpring } from 'motion/react';
+import {
+	motion,
+	useMotionTemplate,
+	useMotionValue,
+	useReducedMotion,
+	useSpring
+} from 'motion/react';
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -13,13 +19,15 @@ export function Reveal({
 	delay?: number;
 	className?: string;
 }) {
+	const reduceMotion = useReducedMotion();
+
 	return (
 		<motion.div
 			className={className}
-			initial={{ opacity: 0, y: 18, rotateX: 6 }}
+			initial={reduceMotion ? false : { opacity: 0, y: 12, rotateX: 3 }}
 			whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
 			viewport={{ once: true, margin: '-60px' }}
-			transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+			transition={{ duration: reduceMotion ? 0 : 0.42, delay, ease: [0.16, 1, 0.3, 1] }}
 			style={{ transformPerspective: 1200 }}
 		>
 			{children}
