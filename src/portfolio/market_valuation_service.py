@@ -6,10 +6,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from src.api.errors import AppError
-from src.database.models import MarketPrice, Position, Trade
-from src.market import MarketDataService
-
-
+from src.database.models import MarketPrice, Portfolio, Position, Trade
 logger = logging.getLogger(__name__)
 
 
@@ -26,12 +23,14 @@ class PortfolioMarketValuationService:
         if not open_positions:
             return
 
+        portfolio = self.db.get(Portfolio, portfolio_id)
+        include_demo_data = bool(portfolio and portfolio.is_demo)
         tickers = [position.ticker for position in open_positions]
         start_date = self._portfolio_first_trade_date(portfolio_id)
         if start_date is not None:
-            self._backfill_market_prices(tickers, start_date)
+            self._backfill_market_prices(tickers, start_date, include_demo_data)
 
-        latest_prices = self._latest_prices_by_ticker(tickers)
+        latest_prices = self._latest_prices_by_ticker(tickers, include_demo_data)
         total_market_value = 0.0
         valued_positions = []
 
@@ -51,9 +50,15 @@ class PortfolioMarketValuationService:
 
         self.db.commit()
 
-    def _backfill_market_prices(self, tickers: list[str], start_date: date) -> None:
+    def _backfill_market_prices(
+        self,
+        tickers: list[str],
+        start_date: date,
+        include_demo_data: bool,
+    ) -> None:
         try:
-            MarketDataService(self.db).get_historical_prices(
+            self.market_data_service.allow_demo_data = include_demo_data
+            self.market_data_service.get_historical_prices(
                 tickers,
                 start_date,
                 date.today(),
@@ -77,15 +82,21 @@ class PortfolioMarketValuationService:
             )
         )
 
-    def _latest_prices_by_ticker(self, tickers: list[str]) -> dict[str, float]:
+    def _latest_prices_by_ticker(
+        self,
+        tickers: list[str],
+        include_demo_data: bool,
+    ) -> dict[str, float]:
         latest_prices: dict[str, float] = {}
         for ticker in tickers:
-            row = (
+            query = (
                 self.db.query(MarketPrice)
                 .filter(MarketPrice.ticker == ticker)
                 .order_by(MarketPrice.date.desc())
-                .first()
             )
+            if not include_demo_data:
+                query = query.filter(MarketPrice.data_source != "demo")
+            row = query.first()
             if row is not None:
                 latest_prices[ticker] = float(row.close)
         return latest_prices

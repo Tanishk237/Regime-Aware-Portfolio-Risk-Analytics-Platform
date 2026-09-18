@@ -1,11 +1,22 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy import delete, func, select
 
 from src.api.errors import AppError
-from src.database.models import MarketPrice, Portfolio, PortfolioReturn, Position, Trade, User
+from src.database.models import (
+    MarketPrice,
+    Portfolio,
+    PortfolioAlert,
+    PortfolioReturn,
+    Position,
+    Recommendation,
+    RegimePrediction,
+    RiskMetric,
+    Trade,
+    User,
+)
 
 
 class PortfolioPositionService:
@@ -24,6 +35,7 @@ class PortfolioPositionService:
         )
 
         if not trades:
+            self._invalidate_derived_snapshots(portfolio_id)
             self.db.commit()
             return []
 
@@ -56,7 +68,27 @@ class PortfolioPositionService:
         for position in positions:
             self.db.refresh(position)
 
+        self._invalidate_derived_snapshots(portfolio_id)
+
         return positions
+
+    def _invalidate_derived_snapshots(self, portfolio_id: int) -> None:
+        for model in (
+            PortfolioAlert,
+            Recommendation,
+            RegimePrediction,
+            RiskMetric,
+            PortfolioReturn,
+        ):
+            self.db.execute(delete(model).where(model.portfolio_id == portfolio_id))
+        portfolio = self.db.get(Portfolio, portfolio_id)
+        if portfolio is not None:
+            portfolio.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+
+        from src.intelligence.cache import invalidate_portfolio_intelligence
+
+        invalidate_portfolio_intelligence(self.db, portfolio_id)
 
     def list_positions(
         self,
@@ -73,10 +105,14 @@ class PortfolioPositionService:
         )
 
         if not positions:
-            positions = self.recalculate_positions(
-                user,
-                portfolio_id,
+            has_trades = self.db.scalar(
+                select(Trade.id).where(Trade.portfolio_id == portfolio_id).limit(1)
             )
+            if has_trades is not None:
+                positions = self.recalculate_positions(
+                    user,
+                    portfolio_id,
+                )
         else:
             self._refresh_position_market_values(portfolio_id)
             positions = list(
@@ -137,7 +173,10 @@ class PortfolioPositionService:
         )
         start_date = first_trade_date or portfolio.created_at.date()
         end_date = latest_price_date or date.today()
-        AnalyticsService(self.db).build_risk_payload(
+        AnalyticsService(
+            self.db,
+            market_data_service=self.market_data_service,
+        ).build_risk_payload(
             user,
             portfolio.id,
             start_date=start_date,
@@ -149,22 +188,27 @@ class PortfolioPositionService:
         self,
         user: User,
         portfolio_id: int,
+        *,
+        positions: list[Position] | None = None,
     ) -> dict:
         portfolio = self.get_portfolio(user, portfolio_id)
         trades = self.list_trades(user, portfolio_id)
-        positions = self.list_positions(user, portfolio_id)
+        positions = positions if positions is not None else self.list_positions(user, portfolio_id)
         returns = self._stored_returns(portfolio_id)
 
         invested_value = sum(
             position.cost_basis
             for position in positions
         )
-        market_values = [
-            position.market_value
-            for position in positions
-            if position.market_value is not None
-        ]
-        current_value = sum(market_values) if market_values else None
+        open_positions = [position for position in positions if position.quantity > 0]
+        all_positions_valued = bool(open_positions) and all(
+            position.market_value is not None for position in open_positions
+        )
+        current_value = (
+            sum(float(position.market_value) for position in open_positions)
+            if all_positions_valued
+            else None
+        )
         unrealized_profit = (
             current_value - invested_value
             if current_value is not None
@@ -179,7 +223,7 @@ class PortfolioPositionService:
         total_pnl = (
             unrealized_profit + realized_pnl
             if unrealized_profit is not None
-            else realized_pnl
+            else realized_pnl if not open_positions else None
         )
         return {
             "portfolio_id": portfolio.id,

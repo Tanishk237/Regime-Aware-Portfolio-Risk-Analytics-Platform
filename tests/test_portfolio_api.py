@@ -9,15 +9,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api.main import create_app
 from src.config.settings import Settings
 from src.database.models import MarketPrice, PortfolioReturn
+from src.market import MarketDataService
 
 
-def build_client(tmp_path) -> TestClient:
+def build_client(tmp_path, *, csv_upload_max_bytes: int = 5 * 1024 * 1024) -> TestClient:
     settings = Settings(
         environment="test",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         run_migrations_on_startup=True,
         default_user_email="test@example.com",
         default_user_name="Test User",
+        csv_upload_max_bytes=csv_upload_max_bytes,
     )
 
     return TestClient(
@@ -272,6 +274,57 @@ def test_summary_total_return_uses_current_value_over_invested_value(tmp_path):
         assert summary["total_return"] == -0.13
 
 
+def test_summary_does_not_publish_partial_portfolio_valuation(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        MarketDataService,
+        "get_historical_prices",
+        lambda self, tickers, start_date, end_date, persist=True: [],
+    )
+
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio(client)["id"]
+
+        for ticker in ("RELIANCE.NS", "TCS.NS"):
+            response = client.post(
+                f"/api/v1/portfolio/{portfolio_id}/trades",
+                json={
+                    "ticker": ticker,
+                    "transaction_type": "BUY",
+                    "quantity": 10,
+                    "transaction_date": "2024-01-01",
+                    "price": 100,
+                },
+            )
+            assert response.status_code == 201
+
+        db = client.app.state.session_factory()
+        try:
+            db.add(
+                MarketPrice(
+                    ticker="RELIANCE.NS",
+                    date=date(2024, 1, 2),
+                    open=120,
+                    high=121,
+                    low=119,
+                    close=120,
+                    volume=1000,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
+
+        assert summary["invested_value"] == 2000
+        assert summary["current_value"] is None
+        assert summary["unrealized_pnl"] is None
+        assert summary["total_pnl"] is None
+        assert summary["return_pct"] is None
+        assert summary["total_return"] is None
+
+
 def test_returns_endpoint_builds_missing_chart_series_from_market_prices(tmp_path):
     with build_client(tmp_path) as client:
         authenticate(client)
@@ -419,6 +472,150 @@ def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
         assert summary["invested_value"] == 55000
 
 
+def test_csv_preview_maps_common_broker_columns_and_normalizes_rows(tmp_path):
+    csv_content = (
+        "Symbol,Side,Qty,Trade Date,Execution Price,Brokerage\n"
+        "reliance.ns,buy,10,2026-01-05,2500,12.5\n"
+        "reliance.ns,sell,2,2026-02-05,2700,8\n"
+    )
+
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post(
+            "/api/v1/portfolio/upload/preview",
+            files={"file": ("broker-export.csv", csv_content, "text/csv")},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["valid"] is True
+        assert payload["total_rows"] == 2
+        assert payload["valid_rows"] == 2
+        assert payload["column_mapping"]["Symbol"] == "ticker"
+        assert payload["column_mapping"]["Execution Price"] == "price"
+        assert payload["preview"][0]["ticker"] == "RELIANCE.NS"
+        assert payload["preview"][0]["transaction_type"] == "BUY"
+
+
+def test_csv_preview_accepts_valid_nse_tickers_with_ampersands(tmp_path):
+    csv_content = (
+        "ticker,transaction_type,quantity,transaction_date,price\n"
+        "M&M.NS,BUY,10,2026-04-08,2950\n"
+    )
+
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post(
+            "/api/v1/portfolio/upload/preview",
+            files={"file": ("nse-ticker.csv", csv_content, "text/csv")},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["valid"] is True
+        assert payload["preview"][0]["ticker"] == "M&M.NS"
+
+
+def test_csv_resolver_repairs_safe_broker_formatting_and_revalidates(tmp_path):
+    csv_content = (
+        "Symbol,Side,Qty,Trade Date,Execution Price,Currency\n"
+        '" nse:reliance ",purchase,"1,000",18/08/2026,"₹2,450.50", inr\n'
+    )
+
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post(
+            "/api/v1/portfolio/upload/resolve",
+            files={"file": ("repairable.csv", csv_content, "text/csv")},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["report"]["valid"] is True
+        assert payload["report"]["preview"][0] == {
+            "ticker": "RELIANCE.NS",
+            "transaction_type": "BUY",
+            "quantity": 1000.0,
+            "transaction_date": "2026-08-18",
+            "price": 2450.5,
+            "currency": "INR",
+            "fees": 0.0,
+            "taxes": 0.0,
+        }
+        assert {change["field"] for change in payload["changes"]} >= {
+            "ticker",
+            "transaction_type",
+            "quantity",
+            "transaction_date",
+            "price",
+            "currency",
+        }
+        assert "RELIANCE.NS" in payload["resolved_csv"]
+
+
+def test_csv_preview_reports_actionable_row_errors_without_importing(tmp_path):
+    csv_content = (
+        "ticker,transaction_type,quantity,transaction_date,price\n"
+        "INFY.NS,SELL,5,not-a-date,-100\n"
+    )
+
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post(
+            "/api/v1/portfolio/upload/preview",
+            files={"file": ("invalid.csv", csv_content, "text/csv")},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["valid"] is False
+        assert payload["valid_rows"] == 0
+        assert {item["field"] for item in payload["errors"]} >= {
+            "quantity",
+            "price",
+            "transaction_date",
+        }
+        assert client.get("/api/v1/portfolio").json() == []
+
+
+def test_repository_sample_csv_completes_the_portfolio_import_flow(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        MarketDataService,
+        "get_historical_prices",
+        lambda self, tickers, start_date, end_date, persist=True: [],
+    )
+    sample_path = Path(__file__).resolve().parents[1] / "testing" / "sample_portfolio_trades.csv"
+
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post(
+            "/api/v1/portfolio/upload",
+            data={
+                "name": "Sample portfolio trades",
+                "description": "Repository end-to-end fixture",
+                "base_currency": "INR",
+                "benchmark": "NIFTY50",
+            },
+            files={"file": (sample_path.name, sample_path.read_bytes(), "text/csv")},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        portfolio_id = payload["portfolio"]["id"]
+        assert payload["trades_created"] == 10
+        assert len(payload["positions"]) == 7
+
+        trades = client.get(f"/api/v1/portfolio/{portfolio_id}/trades").json()
+        positions = client.get(f"/api/v1/portfolio/{portfolio_id}/positions").json()
+        summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
+
+        assert len(trades) == 10
+        assert len(positions) == 7
+        assert summary["trades_count"] == 10
+        assert summary["positions_count"] == 7
+        assert summary["invested_value"] > 0
+
+
 def test_csv_upload_validates_required_columns(tmp_path):
     with build_client(tmp_path) as client:
         authenticate(client)
@@ -436,3 +633,32 @@ def test_csv_upload_validates_required_columns(tmp_path):
 
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "CSV_MISSING_COLUMNS"
+
+
+def test_csv_upload_rejects_empty_invalid_encoding_and_oversized_files(tmp_path):
+    with build_client(tmp_path, csv_upload_max_bytes=32) as client:
+        authenticate(client)
+
+        empty = client.post(
+            "/api/v1/portfolio/upload",
+            data={"name": "Empty Upload"},
+            files={"file": ("empty.csv", b"", "text/csv")},
+        )
+        assert empty.status_code == 400
+        assert empty.json()["error"]["code"] == "CSV_EMPTY"
+
+        invalid_encoding = client.post(
+            "/api/v1/portfolio/upload",
+            data={"name": "Invalid Encoding"},
+            files={"file": ("invalid.csv", b"\xff\xfe\x00\x00", "text/csv")},
+        )
+        assert invalid_encoding.status_code == 400
+        assert invalid_encoding.json()["error"]["code"] == "CSV_INVALID_ENCODING"
+
+        oversized = client.post(
+            "/api/v1/portfolio/upload",
+            data={"name": "Oversized Upload"},
+            files={"file": ("large.csv", b"x" * 33, "text/csv")},
+        )
+        assert oversized.status_code == 413
+        assert oversized.json()["error"]["code"] == "CSV_TOO_LARGE"

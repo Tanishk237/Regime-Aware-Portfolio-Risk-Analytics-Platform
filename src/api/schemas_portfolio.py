@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +13,7 @@ class UserRead(BaseModel):
     email: str
     full_name: Optional[str] = None
     is_active: bool
+    is_guest: bool = False
     created_at: datetime
 
 
@@ -39,6 +40,7 @@ class PortfolioRead(BaseModel):
     description: Optional[str] = None
     base_currency: str
     benchmark: str
+    is_demo: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -141,3 +143,44 @@ class PortfolioUploadResponse(BaseModel):
     portfolio: PortfolioRead
     trades_created: int
     positions: list[PositionRead]
+
+
+class CsvValidationIssue(BaseModel):
+    row: Optional[int] = None
+    field: Optional[str] = None
+    message: str
+
+
+class PortfolioCsvPreviewResponse(BaseModel):
+    valid: bool
+    total_rows: int
+    valid_rows: int
+    duplicate_rows: int
+    detected_columns: list[str]
+    normalized_columns: list[str]
+    column_mapping: dict[str, str]
+    missing_columns: list[str]
+    unknown_columns: list[str]
+    warnings: list[CsvValidationIssue]
+    errors: list[CsvValidationIssue]
+    preview: list[dict[str, Any]]
+
+
+class CsvResolutionChange(BaseModel):
+    row: Optional[int] = None
+    field: str
+    before: Optional[Any] = None
+    after: Optional[Any] = None
+    reason: str
+
+
+class PortfolioCsvResolutionResponse(BaseModel):
+    resolved_csv: str
+    changes: list[CsvResolutionChange]
+    report: PortfolioCsvPreviewResponse
+
+
+class PortfolioDemoResponse(BaseModel):
+    portfolio: PortfolioRead
+    trades_created: int
+    analytics_precomputed: bool
