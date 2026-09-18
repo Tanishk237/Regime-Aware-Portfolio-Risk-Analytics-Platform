@@ -11,9 +11,10 @@ from src.database.base import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("email"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -25,6 +26,10 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def is_guest(self) -> bool:
+        return self.password_hash is None and self.email.endswith("@guest.latent.local")
+
 
 class Portfolio(Base):
     __tablename__ = "portfolios"
@@ -35,6 +40,7 @@ class Portfolio(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     base_currency: Mapped[str] = mapped_column(String(12), nullable=False, default="INR")
     benchmark: Mapped[str] = mapped_column(String(64), nullable=False, default="NIFTY50")
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -167,6 +173,7 @@ class Recommendation(Base):
     __tablename__ = "recommendations"
     __table_args__ = (
         Index("ix_recommendations_portfolio_date", "portfolio_id", "date"),
+        UniqueConstraint("portfolio_id", "fingerprint", name="uq_recommendations_portfolio_fingerprint"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -174,9 +181,58 @@ class Recommendation(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(32), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expected_impact: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RiskProfile(Base):
+    __tablename__ = "risk_profiles"
+    __table_args__ = (UniqueConstraint("user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tolerance: Mapped[str] = mapped_column(String(32), nullable=False, default="moderate")
+    horizon_months: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    max_drawdown_tolerance: Mapped[float] = mapped_column(Float, nullable=False, default=0.20)
+    liquidity_needs: Mapped[str] = mapped_column(String(32), nullable=False, default="medium")
+    income_requirement: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    restrictions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PortfolioAlert(Base):
+    __tablename__ = "portfolio_alerts"
+    __table_args__ = (
+        UniqueConstraint("portfolio_id", "fingerprint", name="uq_portfolio_alerts_fingerprint"),
+        Index("ix_portfolio_alerts_portfolio_detected", "portfolio_id", "detected_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    portfolio_id: Mapped[int] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class StressResult(Base):
@@ -196,6 +252,32 @@ class StressResult(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AIReport(Base):
+    __tablename__ = "ai_reports"
+    __table_args__ = (
+        Index("ix_ai_reports_user_created", "user_id", "created_at"),
+        Index("ix_ai_reports_portfolio_created", "portfolio_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    portfolio_id: Mapped[int] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    report_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    response_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="local", server_default="local"
+    )
+    data_as_of: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class MarketPrice(Base):
     __tablename__ = "market_prices"
     __table_args__ = (
@@ -211,21 +293,44 @@ class MarketPrice(Base):
     low: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     close: Mapped[float] = mapped_column(Float, nullable=False)
     volume: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    data_source: Mapped[str] = mapped_column(String(32), nullable=False, default="provider", server_default="provider")
+
+
+class InstrumentMetadata(Base):
+    __tablename__ = "instrument_metadata"
+    __table_args__ = (UniqueConstraint("ticker"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ticker: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sector: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    exchange: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    currency: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    data_source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="provider", server_default="provider"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class VIXHistory(Base):
     __tablename__ = "vix_history"
+    __table_args__ = (UniqueConstraint("date"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    date: Mapped[date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     vix: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class FIIDIIHistory(Base):
     __tablename__ = "fii_dii_history"
+    __table_args__ = (UniqueConstraint("date"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    date: Mapped[date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     fii: Mapped[float] = mapped_column(Float, nullable=False)
     dii: Mapped[float] = mapped_column(Float, nullable=False)
     net_flow: Mapped[float] = mapped_column(Float, nullable=False)
@@ -233,9 +338,10 @@ class FIIDIIHistory(Base):
 
 class MarketFeature(Base):
     __tablename__ = "market_features"
+    __table_args__ = (UniqueConstraint("date"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    date: Mapped[date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     vix: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     vix_change: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     net_flow: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
