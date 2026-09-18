@@ -27,7 +27,13 @@ class MarketDataFetchService:
     ) -> list[dict]:
         self._validate_date_range(start_date, end_date)
         normalized_tickers = self._normalize_tickers(tickers)
-        cache_key = self._cache_key("historical", normalized_tickers, start_date, end_date)
+        cache_key = self._cache_key(
+            "historical",
+            normalized_tickers,
+            start_date,
+            end_date,
+            "include-demo" if self.allow_demo_data else "provider-only",
+        )
         cached = self.cache.get(cache_key)
         if cached is not None:
             logger.info("Market data cache hit for %s", cache_key)
@@ -41,9 +47,16 @@ class MarketDataFetchService:
 
         try:
             refresh_records = self._fetch_missing_price_records(normalized_tickers, start_date, end_date, stored)
-            MarketDataValidator.validate_ohlcv_records(refresh_records)
-            if persist:
-                self._upsert_market_prices(refresh_records)
+            if refresh_records:
+                MarketDataValidator.validate_ohlcv_records(refresh_records)
+                if persist:
+                    self._upsert_market_prices(refresh_records)
+            elif not stored:
+                raise AppError(
+                    "No historical price data was returned for the requested tickers and date range.",
+                    code="MARKET_DATA_EMPTY",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
         except AppError:
             raise
         except Exception as exc:
@@ -249,9 +262,24 @@ class MarketDataFetchService:
         end_date: Optional[date],
         stored: list[dict],
     ) -> list[dict]:
-        records = []
+        records: list[dict] = []
 
         for ticker in tickers:
-            raw_prices = self.provider.get_ohlcv([ticker], start_date, end_date)
-            records.extend(self._normalize_ohlcv(raw_prices, [ticker]))
+            for missing_start, missing_end in self._missing_price_ranges(
+                stored,
+                ticker,
+                start_date,
+                end_date,
+            ):
+                raw_prices = self.provider.get_ohlcv(
+                    [ticker],
+                    missing_start,
+                    missing_end,
+                )
+                normalized = self._normalize_ohlcv(raw_prices, [ticker])
+                records.extend(
+                    record
+                    for record in normalized
+                    if missing_start <= record["date"] <= missing_end
+                )
         return records

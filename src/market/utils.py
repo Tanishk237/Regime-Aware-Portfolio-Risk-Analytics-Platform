@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -102,6 +102,8 @@ class MarketDataUtils:
 
     @staticmethod
     def _to_date(value) -> date:
+        if isinstance(value, datetime):
+            return value.date()
         if isinstance(value, date):
             return value
         return pd.Timestamp(value).date()

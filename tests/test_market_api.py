@@ -10,7 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.main import create_app
 from src.config.settings import Settings
-from src.database.models import FIIDIIHistory, MarketFeature, MarketPrice, VIXHistory
+from src.database.models import (
+    FIIDIIHistory,
+    InstrumentMetadata,
+    MarketFeature,
+    MarketPrice,
+    VIXHistory,
+)
 from src.market.cache import InMemoryMarketDataCache, market_data_cache
 from src.market.market_service import MarketDataService
 from src.market.providers import MarketDataProvider, YahooFinanceProvider
@@ -289,6 +295,7 @@ class CountingProvider(MarketDataProvider):
 
     def __init__(self):
         self.live_calls = 0
+        self.metadata_calls = 0
 
     def get_ohlcv(self, tickers, start_date, end_date=None):
         return pd.DataFrame()
@@ -299,6 +306,19 @@ class CountingProvider(MarketDataProvider):
 
     def get_india_vix(self, start_date, end_date=None):
         return pd.DataFrame()
+
+    def get_instrument_metadata(self, ticker):
+        self.metadata_calls += 1
+        return {
+            "ticker": ticker,
+            "name": "Reliance Industries",
+            "sector": "Energy",
+            "industry": "Oil & Gas Integrated",
+            "exchange": "NSE",
+            "country": "India",
+            "currency": "INR",
+            "data_source": self.name,
+        }
 
 
 class FailingProvider(MarketDataProvider):
@@ -332,6 +352,65 @@ def test_live_prices_use_cache_before_provider(tmp_path):
             assert provider.live_calls == 1
         finally:
             db.close()
+
+
+def test_instrument_metadata_is_persisted_and_cached(tmp_path):
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        provider = CountingProvider()
+        try:
+            service = MarketDataService(
+                db,
+                provider=provider,
+                cache=InMemoryMarketDataCache(),
+            )
+            first = service.get_instrument_metadata(["RELIANCE.NS"])
+            second = service.get_instrument_metadata(["RELIANCE.NS"])
+
+            assert first[0]["sector"] == "Energy"
+            assert second[0]["sector"] == "Energy"
+            assert provider.metadata_calls == 1
+            stored = db.query(InstrumentMetadata).one()
+            assert stored.ticker == "RELIANCE.NS"
+            assert stored.data_source == "counting"
+        finally:
+            db.close()
+
+
+def test_instrument_metadata_failure_returns_cached_unclassified_value(tmp_path):
+    class MetadataFailingProvider(CountingProvider):
+        def get_instrument_metadata(self, ticker):
+            self.metadata_calls += 1
+            raise RuntimeError("metadata provider down")
+
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        provider = MetadataFailingProvider()
+        try:
+            service = MarketDataService(
+                db,
+                provider=provider,
+                cache=InMemoryMarketDataCache(),
+            )
+            first = service.get_instrument_metadata(["UNKNOWN.NS"])
+            second = service.get_instrument_metadata(["UNKNOWN.NS"])
+
+            assert first == second
+            assert first[0]["sector"] == "Unclassified"
+            assert provider.metadata_calls == 1
+        finally:
+            db.close()
+
+
+def test_market_cache_is_bounded_and_evicts_oldest_entry():
+    cache = InMemoryMarketDataCache(max_entries=2)
+    cache.set("first", {"price": 1}, 900)
+    cache.set("second", {"price": 2}, 900)
+    cache.set("third", {"price": 3}, 900)
+
+    assert cache.get("first") is None
+    assert cache.get("second") == {"price": 2}
+    assert cache.get("third") == {"price": 3}
 
 
 def test_provider_failure_falls_back_to_stored_historical_prices(tmp_path):
@@ -420,7 +499,7 @@ def test_historical_prices_backfill_requested_range_when_only_latest_is_stored(t
             )
 
             assert provider.requests == [
-                (["RELIANCE.NS"], date(2024, 1, 1), date(2024, 1, 3))
+                (["RELIANCE.NS"], date(2024, 1, 1), date(2024, 1, 2))
             ]
             assert len(records) == 3
             assert {record["date"] for record in records} == {
@@ -434,6 +513,70 @@ def test_historical_prices_backfill_requested_range_when_only_latest_is_stored(t
                 .count()
                 == 3
             )
+        finally:
+            db.close()
+
+
+def test_historical_prices_fetch_only_the_missing_trailing_range(tmp_path):
+    class TrailingProvider(CountingProvider):
+        def __init__(self):
+            super().__init__()
+            self.requests = []
+
+        def get_ohlcv(self, tickers, start_date, end_date=None):
+            self.requests.append((tickers, start_date, end_date))
+            close = pd.Series(
+                [102.0, 103.0],
+                index=pd.to_datetime(["2024-01-03", "2024-01-04"]),
+            )
+            return pd.DataFrame(
+                {
+                    "Open": close,
+                    "High": close + 1,
+                    "Low": close - 1,
+                    "Close": close,
+                    "Volume": 1000,
+                },
+                index=close.index,
+            )
+
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        provider = TrailingProvider()
+        try:
+            db.add_all(
+                [
+                    MarketPrice(
+                        ticker="RELIANCE.NS",
+                        date=row_date,
+                        open=price,
+                        high=price + 1,
+                        low=price - 1,
+                        close=price,
+                        volume=1000,
+                    )
+                    for row_date, price in (
+                        (date(2024, 1, 1), 100),
+                        (date(2024, 1, 2), 101),
+                    )
+                ]
+            )
+            db.commit()
+
+            records = MarketDataService(
+                db,
+                provider=provider,
+                cache=InMemoryMarketDataCache(),
+            ).get_historical_prices(
+                ["RELIANCE.NS"],
+                date(2024, 1, 1),
+                date(2024, 1, 4),
+            )
+
+            assert provider.requests == [
+                (["RELIANCE.NS"], date(2024, 1, 3), date(2024, 1, 4))
+            ]
+            assert len(records) == 4
         finally:
             db.close()
 

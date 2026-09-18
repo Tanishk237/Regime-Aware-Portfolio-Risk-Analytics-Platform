@@ -39,6 +39,7 @@ def market_service(db: Session, settings: Settings) -> MarketDataService:
         cache_ttl_seconds=settings.market_data_cache_ttl_seconds,
         provider_retries=settings.market_data_provider_retries,
         provider_retry_backoff_seconds=settings.market_data_provider_retry_backoff_seconds,
+        instrument_metadata_ttl_days=settings.instrument_metadata_ttl_days,
     )
 
 
