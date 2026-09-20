@@ -54,6 +54,7 @@ export default function LoginPage() {
 		>
 			<form
 				className="grid gap-4"
+				aria-busy={!hydrated || submitting}
 				onSubmit={(event) => {
 					event.preventDefault();
 					void login();
@@ -70,6 +71,7 @@ export default function LoginPage() {
 						value={email}
 						autoComplete="email"
 						required
+						disabled={!hydrated || submitting}
 						className="bg-background/60 focus-visible:border-primary h-10 shadow-none transition-colors duration-200 ease-in-out"
 						onChange={(event) => setEmail(event.target.value)}
 					/>
@@ -85,6 +87,7 @@ export default function LoginPage() {
 							value={password}
 							autoComplete="current-password"
 							required
+							disabled={!hydrated || submitting}
 							className="bg-background/60 focus-visible:border-primary h-10 pr-11 shadow-none transition-colors duration-200 ease-in-out"
 							onChange={(event) => setPassword(event.target.value)}
 						/>
@@ -93,6 +96,7 @@ export default function LoginPage() {
 							variant="ghost"
 							size="icon"
 							aria-label={showPassword ? 'Hide password' : 'Show password'}
+							disabled={!hydrated || submitting}
 							className="text-muted-foreground hover:bg-accent hover:text-foreground absolute right-1 top-1/2 size-8 -translate-y-1/2 shadow-none transition-colors duration-200 ease-in-out"
 							onClick={() => setShowPassword((current) => !current)}
 						>
@@ -109,6 +113,7 @@ export default function LoginPage() {
 						checked={rememberMe}
 						onCheckedChange={(checked) => setRememberMe(checked === true)}
 						aria-label="Remember this login"
+						disabled={!hydrated || submitting}
 						className="mt-0.5"
 					/>
 					<span>
@@ -121,7 +126,7 @@ export default function LoginPage() {
 				{error ? <p className="text-negative text-sm">{error}</p> : null}
 				<Button
 					type="submit"
-					disabled={submitting}
+					disabled={!hydrated || submitting}
 					className="h-10 bg-gradient-to-r from-[#0EA5E9] to-[#6366F1] font-medium text-white shadow-none transition-all duration-200 ease-in-out hover:border-[#0EA5E9]/40 hover:shadow-[0_0_20px_rgba(14,165,233,0.2)]"
 				>
 					{submitting ? 'Logging in...' : 'Login'}

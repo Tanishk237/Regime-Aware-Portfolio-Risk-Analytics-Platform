@@ -40,3 +40,7 @@ export function logout() {
 export function endGuestSession() {
 	return api.del<void>('/auth/guest-session');
 }
+
+export function deleteAccount(input: { password: string; confirmation: 'DELETE' }) {
+	return api.del<void>('/auth/account', input);
+}

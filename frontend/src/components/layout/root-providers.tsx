@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ThemeProvider } from '@/components/theme/theme-provider';
 import { AuthProvider } from '@/lib/auth';
-import { AUTH_FAILURE_EVENT } from '@/lib/auth-events';
+import { AUTH_FAILURE_EVENT, PRINCIPAL_CHANGED_EVENT } from '@/lib/auth-events';
 import { ApiError } from '@/lib/api';
 
 export function RootProviders({ children }: { children: React.ReactNode }) {
@@ -36,7 +36,11 @@ export function RootProviders({ children }: { children: React.ReactNode }) {
 			queryClient.clear();
 		};
 		window.addEventListener(AUTH_FAILURE_EVENT, clearClient);
-		return () => window.removeEventListener(AUTH_FAILURE_EVENT, clearClient);
+		window.addEventListener(PRINCIPAL_CHANGED_EVENT, clearClient);
+		return () => {
+			window.removeEventListener(AUTH_FAILURE_EVENT, clearClient);
+			window.removeEventListener(PRINCIPAL_CHANGED_EVENT, clearClient);
+		};
 	}, [queryClient]);
 
 	return (

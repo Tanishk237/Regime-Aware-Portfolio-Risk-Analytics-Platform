@@ -5,19 +5,25 @@ import {
 	Clipboard,
 	Download,
 	FileText,
+	Info,
 	KeyRound,
 	Printer,
 	RefreshCw,
 	Send,
+	ShieldCheck,
 	Trash2
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { SectionCard } from '@/components/charts/chart-card';
 import { MarkdownResponse } from '@/components/common/markdown-response';
+import { EmptyState, ErrorState } from '@/components/common/states';
 import { RequirePortfolio } from '@/components/layout/require-portfolio';
 import { PageHeader } from '@/components/layout/top-bar';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,28 +36,45 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { ApiError, errorMessage } from '@/lib/api';
-import { askCopilot, type AIProvider } from '@/lib/api/ai';
+import { errorMessage } from '@/lib/api';
 import {
-	buildCopilotResponse,
-	buildReport,
-	COPILOT_STARTERS,
-	REPORT_TYPES,
-	type CopilotContext
-} from '@/lib/copilot';
-import { usePositions, useRegime, useRisk, useSummary } from '@/lib/queries';
+	askCopilot,
+	getAIProviderConfig,
+	validateAIProvider,
+	type AIProvider,
+	type CopilotAIResponse
+} from '@/lib/api/ai';
+import { COPILOT_STARTERS, REPORT_TYPES } from '@/lib/copilot';
+import { formatDate } from '@/lib/format';
+import { useAIReports } from '@/lib/queries';
 
-const KEY_STORAGE = 'rapra.copilotApiKey';
-const PROVIDER_STORAGE = 'rapra.copilotProvider';
-const MODEL_STORAGE = 'rapra.copilotModel';
+const KEY_STORAGE = 'latent.copilotApiKey';
+const PROVIDER_STORAGE = 'latent.copilotProvider';
+const MODEL_STORAGE = 'latent.copilotModel';
 
 const DEFAULT_MODELS: Record<AIProvider, string> = {
 	openai: 'gpt-4o-mini',
-	gemini: 'gemini-2.0-flash',
-	claude: 'claude-3-5-haiku-latest'
+	gemini: 'gemini-flash-latest',
+	claude: 'claude-haiku-4-5-20251001',
+	nvidia: 'nvidia/nemotron-3.5-lightning-30b-a3b'
 };
 
-type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string };
+type ChatMessage = {
+	id: string;
+	role: 'user' | 'assistant';
+	content: string;
+	metadata?: Pick<
+		CopilotAIResponse,
+		| 'response_mode'
+		| 'provider'
+		| 'model'
+		| 'tools_used'
+		| 'citations'
+		| 'data_as_of'
+		| 'provider_error'
+		| 'retrieval'
+	>;
+};
 
 export default function AiCopilotRoutePage() {
 	return (
@@ -62,79 +85,151 @@ export default function AiCopilotRoutePage() {
 }
 
 function Copilot({ portfolioId }: { portfolioId: string }) {
-	const summary = useSummary(portfolioId);
-	const positions = usePositions(portfolioId);
-	const risk = useRisk(portfolioId);
-	const regime = useRegime(portfolioId);
-	const [provider, setProvider] = useState<AIProvider>('openai');
+	const searchParams = useSearchParams();
+	const reports = useAIReports(portfolioId);
+	const [provider, setProvider] = useState<AIProvider>('nvidia');
 	const [apiKey, setApiKey] = useState('');
-	const [model, setModel] = useState(DEFAULT_MODELS.openai);
+	const [model, setModel] = useState('');
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [input, setInput] = useState('');
 	const [reportType, setReportType] = useState(REPORT_TYPES[0] ?? 'Daily Report');
 	const [report, setReport] = useState('');
 	const [isSending, setIsSending] = useState(false);
-	const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-
-	const context = useMemo(
-		() => ({
-			summary: summary.data,
-			positions: positions.data ?? [],
-			risk: risk.data,
-			regime: regime.data
-		}),
-		[summary.data, positions.data, risk.data, regime.data]
-	);
+	const [isValidating, setIsValidating] = useState(false);
+	const [connection, setConnection] = useState<'local' | 'unverified' | 'connected'>('local');
+	const [managedConfigured, setManagedConfigured] = useState<boolean | null>(null);
+	const conversationRef = useRef<HTMLDivElement>(null);
+	const serverManaged = provider === 'nvidia';
 
 	useEffect(() => {
 		const storedProvider =
-			(window.localStorage.getItem(PROVIDER_STORAGE) as AIProvider | null) ?? 'openai';
+			(window.sessionStorage.getItem(PROVIDER_STORAGE) as AIProvider | null) ?? 'nvidia';
+		const storedKey = window.sessionStorage.getItem(KEY_STORAGE) ?? '';
 		setProvider(storedProvider);
-		setApiKey(window.localStorage.getItem(KEY_STORAGE) ?? '');
-		setModel(window.localStorage.getItem(MODEL_STORAGE) ?? DEFAULT_MODELS[storedProvider]);
+		setApiKey(storedProvider === 'nvidia' ? '' : storedKey);
+		setModel(
+			storedProvider === 'nvidia' ? '' : (window.sessionStorage.getItem(MODEL_STORAGE) ?? '')
+		);
+		setConnection(storedProvider === 'nvidia' || storedKey ? 'unverified' : 'local');
+		window.localStorage.removeItem('rapra.copilotApiKey');
+		void getAIProviderConfig()
+			.then((config) => {
+				setManagedConfigured(config.managed_provider_configured);
+				if (storedProvider === config.managed_provider) {
+					setConnection(config.managed_provider_configured ? 'connected' : 'unverified');
+				}
+			})
+			.catch(() => setManagedConfigured(null));
 	}, []);
 
-	const saveConnection = () => {
-		if (apiKey.trim().length < 8) {
-			toast.error('Enter a valid API key before saving.');
+	useEffect(() => {
+		const prompt = searchParams.get('prompt');
+		if (prompt) setInput(prompt.slice(0, 12000));
+	}, [searchParams]);
+
+	useEffect(() => {
+		const frame = window.requestAnimationFrame(() => {
+			const conversation = conversationRef.current;
+			if (!conversation) return;
+			conversation.scrollTo({
+				top: conversation.scrollHeight,
+				behavior: messages.length > 1 ? 'smooth' : 'auto'
+			});
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [isSending, messages]);
+
+	const validateConnection = async () => {
+		if (!serverManaged && apiKey.trim().length < 8) {
+			toast.error('Enter a provider API key before validating.');
 			return;
 		}
-		window.localStorage.setItem(KEY_STORAGE, apiKey.trim());
-		window.localStorage.setItem(PROVIDER_STORAGE, provider);
-		window.localStorage.setItem(MODEL_STORAGE, model.trim() || DEFAULT_MODELS[provider]);
-		toast.success(`${providerLabel(provider)} key and model saved locally`);
+		setIsValidating(true);
+		try {
+			const result = await validateAIProvider({
+				provider,
+				apiKey: serverManaged ? undefined : apiKey.trim(),
+				model: serverManaged ? undefined : model.trim() || undefined
+			});
+			if (serverManaged) {
+				window.sessionStorage.removeItem(KEY_STORAGE);
+				window.sessionStorage.removeItem(MODEL_STORAGE);
+				setModel('');
+			} else {
+				window.sessionStorage.setItem(KEY_STORAGE, apiKey.trim());
+				window.sessionStorage.setItem(MODEL_STORAGE, result.model);
+				setModel(result.model);
+			}
+			window.sessionStorage.setItem(PROVIDER_STORAGE, provider);
+			setConnection('connected');
+			toast.success(`${providerLabel(provider)} connection validated for this tab.`);
+		} catch (error) {
+			setConnection('unverified');
+			toast.error(errorMessage(error));
+		} finally {
+			setIsValidating(false);
+		}
+	};
+
+	const clearConnection = () => {
+		window.sessionStorage.removeItem(KEY_STORAGE);
+		window.sessionStorage.removeItem(MODEL_STORAGE);
+		setApiKey('');
+		setModel('');
+		setConnection('local');
+		toast.success('Browser-stored provider key removed from this tab.');
 	};
 
 	const send = async (question: string) => {
 		const trimmed = question.trim();
 		if (!trimmed || isSending) return;
 		setInput('');
-		const userMessage: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content: trimmed };
-		setMessages((current) => [...current, userMessage]);
+		const history = messages.map(({ role, content }) => ({ role, content }));
+		setMessages((current) => [
+			...current,
+			{ id: `u-${Date.now()}`, role: 'user', content: trimmed }
+		]);
 		setIsSending(true);
 		try {
-			const answer = await generateAIAnswer(trimmed, messages, context, provider, apiKey, model);
+			const response = await askCopilot({
+				portfolioId,
+				provider,
+				apiKey: serverManaged ? undefined : apiKey.trim(),
+				model: serverManaged ? undefined : model.trim() || undefined,
+				prompt: trimmed,
+				history
+			});
 			setMessages((current) => [
 				...current,
-				{ id: `a-${Date.now()}`, role: 'assistant', content: answer }
+				{
+					id: `a-${Date.now()}`,
+					role: 'assistant',
+					content: response.answer,
+					metadata: response
+				}
 			]);
+			if (response.response_mode === 'local_fallback') {
+				toast.warning('Provider failed. Latent returned a grounded local explanation instead.');
+			}
+		} catch (error) {
+			toast.error(errorMessage(error));
 		} finally {
 			setIsSending(false);
 		}
 	};
 
 	const generateReport = async () => {
-		if (isGeneratingReport) return;
-		setIsGeneratingReport(true);
 		try {
-			const prompt = `Generate a ${reportType} for this portfolio. Include portfolio snapshot, risk, regime, top drivers, and recommended next actions.`;
-			const next = await generateAIAnswer(prompt, messages, context, provider, apiKey, model, () =>
-				buildReport(context, reportType)
-			);
-			setReport(next);
-			toast.success(`${reportType} generated`);
-		} finally {
-			setIsGeneratingReport(false);
+			const next = await reports.generate.mutateAsync({
+				reportType,
+				provider,
+				apiKey: serverManaged ? undefined : apiKey.trim() || undefined,
+				model: serverManaged ? undefined : model.trim() || undefined
+			});
+			setReport(next.content);
+			toast.success(`${reportType} generated from current backend analytics.`);
+		} catch (error) {
+			toast.error(errorMessage(error));
 		}
 	};
 
@@ -142,42 +237,68 @@ function Copilot({ portfolioId }: { portfolioId: string }) {
 		<div className="space-y-4">
 			<PageHeader
 				title="AI Copilot"
-				description="Portfolio-aware chat and reports grounded in live backend analytics."
+				description="Ask grounded questions and generate reports from authenticated portfolio tools."
 				actions={
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={() => {
-							void risk.refetch();
-							void regime.refetch();
-						}}
-					>
-						<RefreshCw className="size-3.5" /> Refresh Context
-					</Button>
+					<Badge variant="outline" className="gap-1.5">
+						<span
+							className={
+								connection === 'connected'
+									? 'bg-positive size-1.5 rounded-full'
+									: 'bg-muted-foreground size-1.5 rounded-full'
+							}
+						/>
+						{connection === 'connected'
+							? serverManaged
+								? 'Latent AI ready'
+								: `${providerLabel(provider)} connected`
+							: serverManaged && managedConfigured === false
+								? 'Latent AI unavailable'
+								: 'Local grounded mode'}
+					</Badge>
 				}
 			/>
 
-			<SectionCard title="Connection">
-				<p className="text-muted-foreground mb-3 text-sm">
-					This version uses portfolio analytics to generate grounded answers. Provider keys are
-					stored only on this browser and can be connected to backend AI orchestration when that
-					service is enabled.
-				</p>
-				<div className="grid gap-3 lg:grid-cols-[12rem_minmax(12rem,18rem)_minmax(0,1fr)_auto_auto]">
+			<Alert className="border-sky-500/20 bg-sky-500/[0.04]">
+				<Info className="size-4 text-sky-400" />
+				<AlertTitle>How to read state fit probability</AlertTitle>
+				<AlertDescription className="text-muted-foreground">
+					HMM probability measures how well current observations fit an inferred state. It is not
+					forecast accuracy or the probability of the next market move. Predictive accuracy remains
+					unverified until time-ordered walk-forward validation is completed against independent
+					regime labels.
+				</AlertDescription>
+			</Alert>
+
+			<SectionCard
+				title="AI connection"
+				description="Latent AI is the managed default. Switch providers only when you want to use your own tab-scoped key."
+			>
+				<div className="grid gap-3 lg:grid-cols-[11rem_minmax(12rem,18rem)_minmax(0,1fr)_auto_auto]">
 					<div className="grid gap-1.5">
 						<Label className="text-xs">Provider</Label>
 						<Select
 							value={provider}
 							onValueChange={(value) => {
-								const nextProvider = value as AIProvider;
-								setProvider(nextProvider);
-								setModel(DEFAULT_MODELS[nextProvider]);
+								const next = value as AIProvider;
+								setProvider(next);
+								window.sessionStorage.setItem(PROVIDER_STORAGE, next);
+								setModel('');
+								setApiKey('');
+								window.sessionStorage.removeItem(KEY_STORAGE);
+								setConnection(
+									next === 'nvidia' && managedConfigured
+										? 'connected'
+										: next === 'nvidia'
+											? 'unverified'
+											: 'local'
+								);
 							}}
 						>
 							<SelectTrigger>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
+								<SelectItem value="nvidia">Latent AI (managed)</SelectItem>
 								<SelectItem value="openai">OpenAI</SelectItem>
 								<SelectItem value="gemini">Gemini</SelectItem>
 								<SelectItem value="claude">Claude</SelectItem>
@@ -186,13 +307,21 @@ function Copilot({ portfolioId }: { portfolioId: string }) {
 					</div>
 					<div className="grid gap-1.5">
 						<Label htmlFor="ai-model" className="text-xs">
-							Model
+							Model {serverManaged ? '' : '(optional)'}
 						</Label>
 						<Input
 							id="ai-model"
 							value={model}
-							onChange={(event) => setModel(event.target.value)}
-							placeholder={DEFAULT_MODELS[provider]}
+							disabled={serverManaged}
+							onChange={(event) => {
+								setModel(event.target.value);
+								setConnection(apiKey ? 'unverified' : 'local');
+							}}
+							placeholder={
+								serverManaged
+									? 'Selected securely by Latent'
+									: `Automatic: ${DEFAULT_MODELS[provider]}`
+							}
 						/>
 					</div>
 					<div className="grid gap-1.5">
@@ -203,28 +332,47 @@ function Copilot({ portfolioId }: { portfolioId: string }) {
 							id="api-key"
 							type="password"
 							autoComplete="off"
-							value={apiKey}
-							onChange={(event) => setApiKey(event.target.value)}
-							placeholder="Stored only in this browser"
+							value={serverManaged ? '' : apiKey}
+							disabled={serverManaged}
+							onChange={(event) => {
+								setApiKey(event.target.value);
+								setConnection(event.target.value ? 'unverified' : 'local');
+							}}
+							placeholder={
+								serverManaged
+									? 'Configured securely on the backend'
+									: 'Kept only for this browser tab'
+							}
 						/>
 					</div>
-					<Button className="self-end" onClick={saveConnection}>
-						<KeyRound className="size-4" /> Save Key
+					<Button
+						className="self-end"
+						onClick={() => void validateConnection()}
+						disabled={isValidating}
+					>
+						{isValidating ? (
+							<RefreshCw className="size-4 animate-spin" />
+						) : (
+							<KeyRound className="size-4" />
+						)}
+						Validate
 					</Button>
 					<Button
 						className="self-end"
 						variant="outline"
-						onClick={() => {
-							window.localStorage.removeItem(KEY_STORAGE);
-							window.localStorage.removeItem(MODEL_STORAGE);
-							setApiKey('');
-							setModel(DEFAULT_MODELS[provider]);
-							toast.success('Key removed');
-						}}
+						onClick={clearConnection}
+						disabled={serverManaged || !apiKey}
 					>
 						<Trash2 className="size-4" /> Clear
 					</Button>
 				</div>
+				<p className="text-muted-foreground mt-3 text-xs">
+					{serverManaged
+						? managedConfigured === false
+							? 'Latent AI needs a server-side NVIDIA_API_KEY. No credential is ever sent to this browser.'
+							: 'Latent AI uses a server-managed NVIDIA key and automatically selects a compatible model. The credential is never sent to this browser.'
+						: 'This provider key is tab-scoped and sent to the backend only for the selected request.'}
+				</p>
 			</SectionCard>
 
 			<Tabs defaultValue="chat">
@@ -234,27 +382,25 @@ function Copilot({ portfolioId }: { portfolioId: string }) {
 				</TabsList>
 				<TabsContent value="chat" className="mt-4">
 					<div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-						<SectionCard title="Chat">
-							<div className="mb-3 h-[28rem] overflow-y-auto rounded-lg border p-3">
+						<SectionCard title="Conversation">
+							<div
+								ref={conversationRef}
+								className="mb-3 h-[30rem] overflow-y-auto rounded-lg border p-3"
+								aria-live="polite"
+							>
 								{messages.length === 0 ? (
 									<div className="flex h-full flex-col items-center justify-center gap-3 text-center">
 										<Bot className="text-muted-foreground size-8" />
-										<p className="text-sm font-medium">
-											{apiKey ? 'Ask with your connected LLM key' : 'Ask a portfolio question'}
+										<p className="text-sm font-medium">Ask a question about this portfolio</p>
+										<p className="text-muted-foreground max-w-sm text-xs">
+											Latent selects controlled portfolio, risk, regime, position, and profile tools
+											based on your question.
 										</p>
 									</div>
 								) : (
 									<div className="space-y-4">
 										{messages.map((message) => (
-											<div key={message.id} className={message.role === 'user' ? 'text-right' : ''}>
-												<div className="inline-block max-w-[90%] overflow-hidden break-words rounded-lg border px-3 py-2 text-left text-sm">
-													{message.role === 'assistant' ? (
-														<MarkdownResponse content={message.content} />
-													) : (
-														message.content
-													)}
-												</div>
-											</div>
+											<ChatBubble key={message.id} message={message} />
 										))}
 									</div>
 								)}
@@ -263,14 +409,21 @@ function Copilot({ portfolioId }: { portfolioId: string }) {
 								<Textarea
 									value={input}
 									onChange={(event) => setInput(event.target.value)}
-									placeholder="Ask about risk, regime, P&L, recommendations..."
+									onKeyDown={(event) => {
+										if (event.key === 'Enter' && !event.shiftKey) {
+											event.preventDefault();
+											void send(input);
+										}
+									}}
+									placeholder="Ask about risk, regime, P&L, or next actions..."
 									className="min-h-12 min-w-0"
 								/>
 								<Button
 									size="icon"
+									aria-label="Send question"
 									onClick={() => void send(input)}
 									className="self-end"
-									disabled={isSending}
+									disabled={isSending || !input.trim()}
 								>
 									{isSending ? (
 										<RefreshCw className="size-4 animate-spin" />
@@ -301,119 +454,156 @@ function Copilot({ portfolioId }: { portfolioId: string }) {
 									onClick={() => setMessages([])}
 									className="mt-1 w-full justify-start"
 								>
-									<Trash2 className="size-3.5" /> Clear Chat
+									<Trash2 className="size-3.5" /> Clear chat
 								</Button>
 							</div>
 						</SectionCard>
 					</div>
 				</TabsContent>
+
 				<TabsContent value="reports" className="mt-4">
-					<SectionCard title="Reports">
-						<div className="mb-3 flex flex-wrap gap-2">
-							<Select value={reportType} onValueChange={setReportType}>
-								<SelectTrigger className="w-[14rem]">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{REPORT_TYPES.map((item) => (
-										<SelectItem key={item} value={item}>
-											{item}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<Button onClick={() => void generateReport()} disabled={isGeneratingReport}>
-								{isGeneratingReport ? (
-									<RefreshCw className="size-4 animate-spin" />
+					<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+						<SectionCard
+							title="Report builder"
+							description="Reports preserve backend values and include their data date."
+						>
+							<div className="mb-3 flex flex-wrap gap-2">
+								<Select value={reportType} onValueChange={setReportType}>
+									<SelectTrigger className="w-full sm:w-[14rem]">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{REPORT_TYPES.map((item) => (
+											<SelectItem key={item} value={item}>
+												{item}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<Button onClick={() => void generateReport()} disabled={reports.generate.isPending}>
+									{reports.generate.isPending ? (
+										<RefreshCw className="size-4 animate-spin" />
+									) : (
+										<FileText className="size-4" />
+									)}{' '}
+									Generate
+								</Button>
+								<Button variant="outline" disabled={!report} onClick={() => void copy(report)}>
+									<Clipboard className="size-4" /> Copy
+								</Button>
+								<Button
+									variant="outline"
+									disabled={!report}
+									onClick={() => download(report, reportType)}
+								>
+									<Download className="size-4" /> Markdown
+								</Button>
+								<Button
+									variant="outline"
+									disabled={!report}
+									onClick={() => printReport(reportType)}
+								>
+									<Printer className="size-4" /> PDF
+								</Button>
+							</div>
+							<div className="min-h-[26rem] rounded-lg border p-4">
+								{report ? (
+									<MarkdownResponse content={report} />
 								) : (
-									<FileText className="size-4" />
+									<EmptyState
+										title="No report selected"
+										description="Generate a current report or open one from history."
+									/>
 								)}
-								Generate
-							</Button>
-							<Button variant="outline" disabled={!report} onClick={() => copy(report)}>
-								<Clipboard className="size-4" /> Copy
-							</Button>
-							<Button
-								variant="outline"
-								disabled={!report}
-								onClick={() => download(report, reportType)}
-							>
-								<Download className="size-4" /> Markdown
-							</Button>
-							<Button variant="outline" disabled={!report} onClick={() => printReport(reportType)}>
-								<Printer className="size-4" /> PDF
-							</Button>
-						</div>
-						<div className="min-h-[26rem] rounded-lg border p-4">
-							{report ? (
-								<MarkdownResponse content={report} />
+							</div>
+						</SectionCard>
+						<SectionCard title="Report history">
+							{reports.isError ? (
+								<ErrorState error={reports.error} onRetry={() => void reports.refetch()} />
+							) : reports.data?.length ? (
+								<div className="space-y-2">
+									{reports.data.map((item) => (
+										<Button
+											key={item.id}
+											variant="outline"
+											className="h-auto w-full justify-start px-3 py-2 text-left"
+											onClick={() => {
+												setReport(item.content);
+												setReportType(item.report_type);
+											}}
+										>
+											<span className="min-w-0">
+												<span className="block truncate text-sm font-medium">{item.title}</span>
+												<span className="text-muted-foreground mt-0.5 block text-xs">
+													{formatDate(item.created_at)} · {item.response_mode.replace('_', ' ')}
+												</span>
+											</span>
+										</Button>
+									))}
+								</div>
 							) : (
-								<p className="text-muted-foreground text-sm">
-									Generate a report to preview it here.
-								</p>
+								<EmptyState title="No saved reports" />
 							)}
-						</div>
-					</SectionCard>
+						</SectionCard>
+					</div>
 				</TabsContent>
 			</Tabs>
 		</div>
 	);
 }
 
-async function generateAIAnswer(
-	prompt: string,
-	messages: ChatMessage[],
-	context: CopilotContext,
-	provider: AIProvider,
-	apiKey: string,
-	model: string,
-	fallback: () => string = () => buildCopilotResponse(context, prompt)
-) {
-	const trimmedKey = apiKey.trim();
-	if (!trimmedKey) {
-		toast.info('No AI key connected. Using local portfolio summary.');
-		return fallback();
-	}
-
-	try {
-		const response = await askCopilot({
-			provider,
-			apiKey: trimmedKey,
-			model: model.trim() || DEFAULT_MODELS[provider],
-			prompt,
-			context,
-			history: messages
-				.filter((message) => message.role === 'user' || message.role === 'assistant')
-				.map((message) => ({ role: message.role, content: message.content }))
-		});
-		return response.answer;
-	} catch (error) {
-		toast.error(errorMessage(error));
-		return [
-			'## Provider request failed',
-			`The ${providerLabel(provider)} call did not complete: ${errorMessage(error)}`,
-			providerDebugDetails(error),
-			'',
-			'## Local fallback',
-			fallback()
-		]
-			.filter(Boolean)
-			.join('\n');
-	}
+function ChatBubble({ message }: { message: ChatMessage }) {
+	return (
+		<div className={message.role === 'user' ? 'text-right' : ''}>
+			<div className="inline-block max-w-[92%] overflow-hidden break-words rounded-lg border px-3 py-2 text-left text-sm">
+				{message.role === 'assistant' ? (
+					<MarkdownResponse content={message.content} />
+				) : (
+					message.content
+				)}
+				{message.metadata ? (
+					<div className="border-border/70 text-muted-foreground mt-3 flex flex-wrap items-center gap-1.5 border-t pt-2 text-xs">
+						<Badge variant="outline">{message.metadata.response_mode.replace('_', ' ')}</Badge>
+						<Badge variant="outline">{message.metadata.model}</Badge>
+						{message.metadata.tools_used.map((tool) => (
+							<Badge key={tool} variant="secondary">
+								{tool.replaceAll('_', ' ')}
+							</Badge>
+						))}
+						{message.metadata.data_as_of ? (
+							<span>Data {formatDate(message.metadata.data_as_of)}</span>
+						) : null}
+						{message.metadata.provider_error ? (
+							<p className="text-warning basis-full">
+								Provider error: {message.metadata.provider_error}
+							</p>
+						) : null}
+						{message.metadata.retrieval ? (
+							<p className="basis-full">
+								Local vector retrieval selected {message.metadata.retrieval.selected_documents} of{' '}
+								{message.metadata.retrieval.available_documents} context blocks · approximately{' '}
+								{message.metadata.retrieval.estimated_input_tokens} input tokens ·{' '}
+								{message.metadata.retrieval.external_embedding_tokens} embedding API tokens
+							</p>
+						) : null}
+						{message.metadata.citations.length ? (
+							<p className="basis-full">
+								<ShieldCheck className="mr-1 inline size-3" /> {message.metadata.citations.length}{' '}
+								backend facts cited
+							</p>
+						) : null}
+					</div>
+				) : null}
+			</div>
+		</div>
+	);
 }
 
 function providerLabel(provider: AIProvider) {
-	return provider === 'openai' ? 'OpenAI' : provider === 'gemini' ? 'Gemini' : 'Claude';
-}
-
-function providerDebugDetails(error: unknown) {
-	if (!(error instanceof ApiError) || !error.details || typeof error.details !== 'object') {
-		return '';
-	}
-	const details = error.details as Record<string, unknown>;
-	const statusCode = details['status_code'] ? `Status: ${String(details['status_code'])}` : '';
-	const body = details['body'] ? `Provider response: ${String(details['body'])}` : '';
-	return [statusCode, body].filter(Boolean).join('\n');
+	if (provider === 'openai') return 'OpenAI';
+	if (provider === 'gemini') return 'Gemini';
+	if (provider === 'claude') return 'Claude';
+	return 'NVIDIA';
 }
 
 async function copy(content: string) {

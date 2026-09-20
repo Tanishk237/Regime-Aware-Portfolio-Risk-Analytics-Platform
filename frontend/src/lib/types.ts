@@ -182,12 +182,16 @@ export type HistoricalPricePoint = {
 	low?: number | null;
 	close: number;
 	volume?: number | null;
+	source?: string | null;
 };
 
 export type LivePricePoint = {
 	ticker: string;
 	price: number;
 	name?: string | null;
+	source: string;
+	as_of: string;
+	is_stale: boolean;
 };
 
 export type VixPoint = {
@@ -402,5 +406,6 @@ export type CsvResolutionChange = {
 export type CsvResolution = {
 	resolved_csv: string;
 	changes: CsvResolutionChange[];
+	changes_truncated: boolean;
 	report: CsvPreview;
 };

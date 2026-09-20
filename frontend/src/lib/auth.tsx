@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import {
 	createGuestSession,
+	deleteAccount as deleteAccountRequest,
 	endGuestSession,
 	login,
 	logout,
@@ -10,7 +11,7 @@ import {
 	type AuthResponse,
 	type AuthUser
 } from '@/lib/api/auth';
-import { AUTH_FAILURE_EVENT } from '@/lib/auth-events';
+import { AUTH_FAILURE_EVENT, publishPrincipalChanged } from '@/lib/auth-events';
 import {
 	clearLegacyAccessToken,
 	clearRapraSessionStorage,
@@ -80,6 +81,7 @@ type AuthContextValue = {
 	signUp: (input: { name?: string; email: string; password: string }) => Promise<void>;
 	continueAsGuest: () => Promise<void>;
 	signOut: () => Promise<void>;
+	deleteAccount: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -132,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	const persistAuth = useCallback((response: AuthResponse, rememberMe = false) => {
+		publishPrincipalChanged();
 		clearLegacyAccessToken();
 		clearRapraSessionStorage();
 		const next = toAppUser(response.user);
@@ -169,6 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	);
 
 	const continueAsGuest = useCallback(async () => {
+		publishPrincipalChanged();
 		clearLegacyAccessToken();
 		clearStoredUser();
 		clearRapraSessionStorage();
@@ -201,12 +205,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		clearLegacyAccessToken();
 		clearStoredUser();
 		clearRapraSessionStorage();
+		publishPrincipalChanged();
 		setUser(null);
 	}, [user?.isGuest]);
 
+	const deleteAccount = useCallback(async (password: string) => {
+		await deleteAccountRequest({ password, confirmation: 'DELETE' });
+		clearLegacyAccessToken();
+		clearStoredUser();
+		clearRapraSessionStorage();
+		publishPrincipalChanged();
+		setUser(null);
+	}, []);
+
 	const value = useMemo(
-		() => ({ user, hydrated, signIn, signUp, continueAsGuest, signOut }),
-		[user, hydrated, signIn, signUp, continueAsGuest, signOut]
+		() => ({ user, hydrated, signIn, signUp, continueAsGuest, signOut, deleteAccount }),
+		[user, hydrated, signIn, signUp, continueAsGuest, signOut, deleteAccount]
 	);
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

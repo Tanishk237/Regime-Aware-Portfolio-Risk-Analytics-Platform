@@ -27,18 +27,53 @@ import {
 } from '@/lib/series';
 
 const METRICS = [
-	{ label: 'Period return', names: ['period_return', 'total_return'], kind: 'pct' },
-	{ label: 'CAGR', names: ['cagr'], kind: 'pct' },
-	{ label: 'Volatility', names: ['annualized_volatility', 'volatility'], kind: 'pct' },
-	{ label: 'Max drawdown', names: ['max_drawdown'], kind: 'pct' },
-	{ label: 'Historical VaR', names: ['historical_var'], kind: 'pct' },
-	{ label: 'Historical CVaR', names: ['historical_cvar'], kind: 'pct' },
-	{ label: 'Sharpe', names: ['sharpe'], kind: 'num' },
-	{ label: 'Sortino', names: ['sortino'], kind: 'num' },
-	{ label: 'Calmar', names: ['calmar'], kind: 'num' },
-	{ label: 'Parametric VaR', names: ['parametric_var'], kind: 'pct' },
-	{ label: 'Parametric CVaR', names: ['parametric_cvar'], kind: 'pct' },
-	{ label: 'Daily mean', names: ['daily_mean_return'], kind: 'pct' }
+	{
+		label: 'Period return',
+		names: ['period_return', 'total_return'],
+		kind: 'pct',
+		explanation: 'period_return'
+	},
+	{ label: 'CAGR', names: ['cagr'], kind: 'pct', explanation: 'cagr' },
+	{
+		label: 'Volatility',
+		names: ['annualized_volatility', 'volatility'],
+		kind: 'pct',
+		explanation: 'annualized_volatility'
+	},
+	{ label: 'Max drawdown', names: ['max_drawdown'], kind: 'pct', explanation: 'max_drawdown' },
+	{
+		label: 'Historical VaR',
+		names: ['historical_var'],
+		kind: 'pct',
+		explanation: 'historical_var'
+	},
+	{
+		label: 'Historical CVaR',
+		names: ['historical_cvar'],
+		kind: 'pct',
+		explanation: 'historical_cvar'
+	},
+	{ label: 'Sharpe', names: ['sharpe'], kind: 'num', explanation: 'sharpe' },
+	{ label: 'Sortino', names: ['sortino'], kind: 'num', explanation: 'sortino' },
+	{ label: 'Calmar', names: ['calmar'], kind: 'num', explanation: 'calmar' },
+	{
+		label: 'Parametric VaR',
+		names: ['parametric_var'],
+		kind: 'pct',
+		explanation: 'parametric_var'
+	},
+	{
+		label: 'Parametric CVaR',
+		names: ['parametric_cvar'],
+		kind: 'pct',
+		explanation: 'parametric_cvar'
+	},
+	{
+		label: 'Daily mean',
+		names: ['daily_mean_return'],
+		kind: 'pct',
+		explanation: 'daily_mean_return'
+	}
 ] as const;
 
 export default function RiskRoutePage() {
@@ -158,6 +193,9 @@ function RiskPage({ portfolioId }: { portfolioId: string }) {
 										: item.kind === 'pct'
 											? formatPercent(value)
 											: formatRisk(value)
+								}
+								explanation={
+									item.explanation ? { portfolioId, metric: item.explanation } : undefined
 								}
 							/>
 						);

@@ -14,13 +14,14 @@
 		"test:pages": "npm run typecheck && npm run lint && npm run build",
 		"test:upload-market": "npm run typecheck && npm run lint && npm run build",
 		"test:ai": "npm run typecheck && npm run lint && npm run build",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui",
 		"test:production": "npm run smoke && npm run typecheck && npm run lint && npm run build",
 		"check": "npm run typecheck && npm run lint && npm run build",
 		"format": "prettier --write ."
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.3.0",
-		"@fontsource/ibm-plex-mono": "^5.3.0",
 		"@hookform/resolvers": "^5.2.2",
 		"@radix-ui/react-accordion": "^1.2.12",
 		"@radix-ui/react-alert-dialog": "^1.1.15",
@@ -73,6 +74,8 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.32.0",
+		"@playwright/test": "^1.63.0",
+		"@tailwindcss/postcss": "^4.2.1",
 		"@types/node": "^22.16.5",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
@@ -84,7 +87,6 @@
 		"globals": "^15.15.0",
 		"prettier": "^3.7.3",
 		"typescript": "^5.8.3",
-		"typescript-eslint": "^8.56.1",
-		"@tailwindcss/postcss": "^4.2.1"
+		"typescript-eslint": "^8.56.1"
 	}
 }

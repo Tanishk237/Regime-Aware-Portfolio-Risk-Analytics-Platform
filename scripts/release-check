@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "${ROOT_DIR}"
+venv/bin/python -m pip check
+venv/bin/pytest -q
+
+if git grep -nE 'nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}'; then
+	echo "Potential provider credential found in tracked files."
+	exit 1
+fi
+
+cd "${ROOT_DIR}/frontend"
+npm run smoke
+npm run lint
+npm run typecheck
+npm run build
+npm run test:e2e
+
+echo "Release checks passed."

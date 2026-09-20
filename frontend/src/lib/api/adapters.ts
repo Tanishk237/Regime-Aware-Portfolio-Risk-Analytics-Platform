@@ -53,7 +53,8 @@ function optionalNumber(value: unknown): number | undefined {
 function optionalReturnFraction(value: unknown): number | undefined {
 	const parsed = maybeNumber(value);
 	if (parsed === undefined || parsed === null) return undefined;
-	return Math.abs(parsed) > 1 ? parsed / 100 : parsed;
+	// Backend return values have one contract everywhere: decimal fractions.
+	return parsed;
 }
 
 function numberOrZero(value: unknown): number {
@@ -85,6 +86,7 @@ export function adaptPortfolio(value: unknown): Portfolio {
 		description: maybeString(row['description']),
 		base_currency: maybeString(row['base_currency']) ?? 'INR',
 		benchmark: maybeString(row['benchmark']) ?? 'NIFTY50',
+		is_demo: Boolean(row['is_demo']),
 		created_at: maybeString(row['created_at']),
 		updated_at: maybeString(row['updated_at'])
 	};
@@ -264,6 +266,7 @@ export function adaptRegime(value: unknown): RegimeAnalytics {
 		regime_statistics: statistics,
 		durations,
 		regime_duration: durations,
+		explanation: asRecord(row['explanation']) as RegimeAnalytics['explanation'],
 		fallback_used: Boolean(
 			asRecord(row['feature_metadata'])['fallback_used'] ||
 			asRecord(row['feature_metadata'])['model_fallback_used']
@@ -280,7 +283,8 @@ export function adaptHistoricalPrice(value: unknown): HistoricalPricePoint {
 		high: maybeNumber(row['high']),
 		low: maybeNumber(row['low']),
 		close: numberOrZero(row['close']),
-		volume: maybeNumber(row['volume'])
+		volume: maybeNumber(row['volume']),
+		source: maybeString(row['source'])
 	};
 }
 
@@ -289,7 +293,10 @@ export function adaptLivePrice(value: unknown): LivePricePoint {
 	return {
 		ticker: String(row['ticker'] ?? '').toUpperCase(),
 		price: numberOrZero(row['price']),
-		name: maybeString(row['name'])
+		name: maybeString(row['name']),
+		source: String(row['source'] ?? 'unknown'),
+		as_of: String(row['as_of'] ?? ''),
+		is_stale: Boolean(row['is_stale'])
 	};
 }
 

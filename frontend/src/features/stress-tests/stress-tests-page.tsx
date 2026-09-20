@@ -1,37 +1,28 @@
 'use client';
 
-import { Download, Play, RefreshCw } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Download, LoaderCircle, Play, RefreshCw, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { SectionCard } from '@/components/charts/chart-card';
 import { DataTable, type Column } from '@/components/common/data-table';
 import { MetricCard } from '@/components/common/metric-card';
-import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/common/states';
+import { EmptyState, ErrorState } from '@/components/common/states';
 import { RequirePortfolio } from '@/components/layout/require-portfolio';
 import { PageHeader } from '@/components/layout/top-bar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { metric } from '@/lib/analytics-derive';
-import { formatCurrency, formatNumber, formatPercent } from '@/lib/format';
-import { usePositions, useRisk, useSummary } from '@/lib/queries';
-import type { Position } from '@/lib/types';
+import { errorMessage } from '@/lib/api';
+import { formatCurrency, formatPercent } from '@/lib/format';
+import { useStressScenario, useSummary } from '@/lib/queries';
+import type { StressScenarioPreview, StressScenarioResult } from '@/lib/types';
 
-type ScenarioResult = {
-	name: string;
-	description: string;
-	marketShock: number;
-	volatilityShock: number;
-	valueBefore: number;
-	valueAfter: number;
-	estimatedLoss: number;
-	estimatedLossPct: number;
-	estimatedVarAfter?: number;
-	generatedAt: string;
-};
+type PositionImpact = StressScenarioResult['position_impacts'][number];
 
 export default function StressTestsRoutePage() {
 	return (
@@ -43,84 +34,90 @@ export default function StressTestsRoutePage() {
 
 function StressTestsPage({ portfolioId }: { portfolioId: string }) {
 	const summary = useSummary(portfolioId);
-	const positions = usePositions(portfolioId);
-	const risk = useRisk(portfolioId);
+	const stress = useStressScenario(portfolioId);
+	const [prompt, setPrompt] = useState('What if NIFTY falls 15% and volatility rises 40%?');
+	const [preview, setPreview] = useState<StressScenarioPreview | null>(null);
+	const [confirmed, setConfirmed] = useState(false);
 	const [name, setName] = useState('Market drawdown scenario');
 	const [description, setDescription] = useState('Broad market decline with higher volatility.');
 	const [marketShock, setMarketShock] = useState(-20);
 	const [volatilityShock, setVolatilityShock] = useState(25);
-	const [result, setResult] = useState<ScenarioResult | null>(null);
-
+	const [tickerShocks, setTickerShocks] = useState<Record<string, number>>({});
+	const [result, setResult] = useState<StressScenarioResult | null>(null);
 	const currency = summary.data?.base_currency ?? 'INR';
-	const valueBefore = summary.data?.current_value ?? summary.data?.invested_value ?? 0;
-	const positionRows = useMemo(
-		() =>
-			(positions.data ?? []).map((position) => {
-				const before = position.market_value ?? position.cost_basis ?? 0;
-				const after = before * (1 + marketShock / 100);
-				return { ...position, scenario_value: after, scenario_pnl: after - before };
-			}),
-		[marketShock, positions.data]
-	);
 
-	const runScenario = () => {
-		if (!valueBefore) {
-			toast.error('Portfolio value is unavailable for stress testing.');
-			return;
+	const parseScenario = async () => {
+		try {
+			const next = await stress.parse.mutateAsync(prompt);
+			setPreview(next);
+			setName(next.name);
+			setDescription(next.prompt);
+			setMarketShock(next.market_shock);
+			setVolatilityShock(next.volatility_shock);
+			setTickerShocks(next.ticker_shocks);
+			setConfirmed(false);
+			setResult(null);
+		} catch (error) {
+			toast.error(errorMessage(error));
 		}
-		const valueAfter = valueBefore * (1 + marketShock / 100);
-		const historicalVar = metric(risk.data, 'historical_var');
-		const estimatedVarAfter =
-			historicalVar === undefined || historicalVar === null
-				? undefined
-				: historicalVar * (1 + volatilityShock / 100);
-		const next = {
-			name: name.trim() || 'Untitled stress scenario',
-			description: description.trim(),
-			marketShock,
-			volatilityShock,
-			valueBefore,
-			valueAfter,
-			estimatedLoss: valueAfter - valueBefore,
-			estimatedLossPct: valueBefore ? (valueAfter - valueBefore) / valueBefore : 0,
-			estimatedVarAfter,
-			generatedAt: new Date().toISOString()
-		};
-		setResult(next);
-		toast.success('Stress scenario generated');
 	};
 
-	const columns: Array<Column<Position & { scenario_value: number; scenario_pnl: number }>> = [
+	const updateManualScenario = (update: () => void) => {
+		update();
+		setPreview(null);
+		setConfirmed(false);
+		setTickerShocks({});
+		setResult(null);
+	};
+
+	const runScenario = async () => {
+		try {
+			const next = await stress.run.mutateAsync({
+				name: name.trim() || 'Untitled stress scenario',
+				description: description.trim(),
+				market_shock: marketShock,
+				volatility_shock: volatilityShock,
+				ticker_shocks: tickerShocks,
+				confirmed: preview ? confirmed : true
+			});
+			setResult(next);
+			toast.success('Stress scenario persisted.');
+		} catch (error) {
+			toast.error(errorMessage(error));
+		}
+	};
+
+	const columns: Array<Column<PositionImpact>> = [
 		{
 			key: 'ticker',
 			header: 'Ticker',
 			cell: (row) => <span className="font-medium">{row.ticker}</span>
 		},
 		{
-			key: 'weight',
-			header: 'Weight',
+			key: 'shock',
+			header: 'Applied shock',
 			align: 'right',
-			cell: (row) => formatPercent(row.weight ?? row.market_weight ?? row.cost_weight)
+			cell: (row) => formatPercent(row.applied_shock / 100)
 		},
 		{
 			key: 'before',
 			header: 'Before',
 			align: 'right',
-			cell: (row) => formatCurrency(row.market_value ?? row.cost_basis, currency)
+			cell: (row) => formatCurrency(row.value_before, currency)
 		},
 		{
 			key: 'after',
 			header: 'After',
 			align: 'right',
-			cell: (row) => formatCurrency(row.scenario_value, currency)
+			cell: (row) => formatCurrency(row.value_after, currency)
 		},
 		{
-			key: 'pnl',
-			header: 'Scenario P&L',
+			key: 'impact',
+			header: 'Impact',
 			align: 'right',
 			cell: (row) => (
-				<span className={row.scenario_pnl < 0 ? 'text-negative' : 'text-positive'}>
-					{formatCurrency(row.scenario_pnl, currency)}
+				<span className={row.impact < 0 ? 'text-negative' : 'text-positive'}>
+					{formatCurrency(row.impact, currency)}
 				</span>
 			)
 		}
@@ -130,23 +127,72 @@ function StressTestsPage({ portfolioId }: { portfolioId: string }) {
 		<div className="space-y-4">
 			<PageHeader
 				title="Stress Tests"
-				description="Estimate portfolio impact under market shock and volatility stress assumptions."
+				description="Translate plain-language market assumptions into an auditable portfolio impact scenario."
 				actions={
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={() => {
-							void summary.refetch();
-							void positions.refetch();
-							void risk.refetch();
-						}}
-					>
-						<RefreshCw className="size-3.5" /> Refresh
+					<Button size="sm" variant="outline" onClick={() => void summary.refetch()}>
+						<RefreshCw className="size-3.5" /> Refresh value
 					</Button>
 				}
 			/>
 
-			<SectionCard title="Scenario">
+			<SectionCard
+				title="Describe a scenario"
+				description="Latent extracts market, volatility, and holding-specific shocks. Nothing runs until you review the assumptions."
+			>
+				<div className="flex flex-col gap-2 sm:flex-row">
+					<Textarea
+						value={prompt}
+						onChange={(event) => setPrompt(event.target.value)}
+						className="min-h-20 min-w-0"
+						placeholder="Example: NIFTY falls 12%, VIX rises 35%, and INFY falls 20%."
+					/>
+					<Button
+						className="self-end"
+						onClick={() => void parseScenario()}
+						disabled={stress.parse.isPending || prompt.trim().length < 3}
+					>
+						{stress.parse.isPending ? (
+							<LoaderCircle className="size-4 animate-spin" />
+						) : (
+							<Sparkles className="size-4" />
+						)}{' '}
+						Interpret
+					</Button>
+				</div>
+				{preview ? (
+					<div className="bg-surface-strong/35 mt-4 rounded-lg border p-4">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<p className="text-sm font-semibold">Review interpreted assumptions</p>
+							<Badge variant="outline">Confirmation required</Badge>
+						</div>
+						<ul className="text-muted-foreground mt-3 space-y-1 text-sm">
+							{preview.assumptions.map((item) => (
+								<li key={item}>• {item}</li>
+							))}
+						</ul>
+						<div className="mt-4 flex items-center gap-2">
+							<Checkbox
+								id="confirm-scenario"
+								checked={confirmed}
+								onCheckedChange={(value) => setConfirmed(value === true)}
+							/>
+							<Label htmlFor="confirm-scenario" className="font-normal">
+								I reviewed these assumptions and want to run this scenario.
+							</Label>
+						</div>
+					</div>
+				) : null}
+			</SectionCard>
+
+			<SectionCard
+				title="Scenario controls"
+				description="Adjusting a control switches back to a manual scenario."
+			>
+				{summary.isError ? (
+					<div className="mb-4">
+						<ErrorState error={summary.error} onRetry={() => void summary.refetch()} />
+					</div>
+				) : null}
 				<div className="grid gap-4 lg:grid-cols-2">
 					<div className="grid gap-1.5">
 						<Label htmlFor="scenario-name">Name</Label>
@@ -172,24 +218,44 @@ function StressTestsPage({ portfolioId }: { portfolioId: string }) {
 								min={-60}
 								max={30}
 								step={1}
-								onValueChange={([value]) => setMarketShock(value ?? -20)}
+								onValueChange={([value]) =>
+									updateManualScenario(() => setMarketShock(value ?? -20))
+								}
 							/>
 						</div>
 						<div className="grid gap-2">
-							<Label>Volatility shock: +{volatilityShock}%</Label>
+							<Label>
+								Volatility shock: {volatilityShock >= 0 ? '+' : ''}
+								{volatilityShock}%
+							</Label>
 							<Slider
 								value={[volatilityShock]}
-								min={0}
+								min={-50}
 								max={150}
 								step={5}
-								onValueChange={([value]) => setVolatilityShock(value ?? 25)}
+								onValueChange={([value]) =>
+									updateManualScenario(() => setVolatilityShock(value ?? 25))
+								}
 							/>
 						</div>
 					</div>
 				</div>
 				<div className="mt-4 flex flex-wrap gap-2">
-					<Button onClick={runScenario}>
-						<Play className="size-4" /> Run scenario
+					<Button
+						disabled={
+							summary.isLoading ||
+							summary.isError ||
+							stress.run.isPending ||
+							Boolean(preview && !confirmed)
+						}
+						onClick={() => void runScenario()}
+					>
+						{stress.run.isPending ? (
+							<LoaderCircle className="size-4 animate-spin" />
+						) : (
+							<Play className="size-4" />
+						)}{' '}
+						Run scenario
 					</Button>
 					<Button variant="outline" disabled={!result} onClick={() => result && download(result)}>
 						<Download className="size-4" /> Export JSON
@@ -200,60 +266,62 @@ function StressTestsPage({ portfolioId }: { portfolioId: string }) {
 			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 				<MetricCard
 					label="Value before"
-					value={formatCurrency(valueBefore, currency)}
+					value={formatCurrency(result?.value_before ?? summary.data?.current_value, currency)}
 					loading={summary.isLoading}
+					explanation={{ portfolioId, metric: 'portfolio_value' }}
 				/>
 				<MetricCard
 					label="Value after"
-					value={formatCurrency(result?.valueAfter, currency)}
-					tone={result && result.valueAfter >= result.valueBefore ? 'positive' : 'negative'}
+					value={formatCurrency(result?.value_after, currency)}
+					tone={result && result.value_after >= result.value_before ? 'positive' : 'negative'}
 				/>
 				<MetricCard
 					label="Estimated impact"
-					value={formatCurrency(result?.estimatedLoss, currency)}
-					hint={result ? formatPercent(result.estimatedLossPct) : undefined}
-					tone={result && result.estimatedLoss >= 0 ? 'positive' : 'negative'}
+					value={formatCurrency(result?.estimated_impact, currency)}
+					hint={result ? formatPercent(result.estimated_impact_pct) : undefined}
+					tone={result && result.estimated_impact >= 0 ? 'positive' : 'negative'}
 				/>
 				<MetricCard
 					label="Stressed historical VaR"
-					value={formatPercent(result?.estimatedVarAfter)}
-					hint={`Base ${formatPercent(metric(risk.data, 'historical_var'))}`}
-					loading={risk.isLoading}
+					value={formatPercent(result?.historical_var_after)}
+					hint={result ? `Base ${formatPercent(result.historical_var_before)}` : undefined}
+					explanation={{ portfolioId, metric: 'historical_var' }}
 				/>
 			</div>
 
-			<SectionCard title="Position impact">
-				{positions.isLoading ? (
-					<LoadingSkeleton rows={5} />
-				) : positions.isError ? (
-					<ErrorState error={positions.error} onRetry={() => void positions.refetch()} />
-				) : positionRows.length === 0 ? (
-					<EmptyState title="No positions available for stress testing." />
-				) : (
+			<SectionCard
+				title="Position impact"
+				description="Attribution uses each current market value and any ticker-specific shock before the broad market assumption."
+			>
+				{result?.position_impacts.length ? (
 					<DataTable
 						dense
 						columns={columns}
-						rows={positionRows}
-						rowKey={(row) => row.id ?? row.ticker}
+						rows={result.position_impacts}
+						rowKey={(row) => row.ticker}
 					/>
+				) : (
+					<EmptyState title="Run a scenario to see position attribution" />
 				)}
 			</SectionCard>
 
-			<SectionCard title="Method">
-				<p className="text-muted-foreground text-sm">
-					This frontend scenario applies the selected market shock uniformly to current position
-					values and scales historical VaR by the volatility shock. Backend persisted stress testing
-					can replace this local estimator when scenario APIs are added.
-				</p>
-				<p className="text-muted-foreground mt-2 text-xs">
-					Positions loaded: {formatNumber(positionRows.length, 0)}
-				</p>
-			</SectionCard>
+			{result ? (
+				<SectionCard title="Method and assumptions">
+					<ul className="text-muted-foreground space-y-1 text-sm">
+						{result.assumptions.map((item) => (
+							<li key={item}>• {item}</li>
+						))}
+					</ul>
+					<p className="text-muted-foreground mt-3 text-xs">
+						This is a sensitivity estimate, not a forecast or investment recommendation.
+					</p>
+				</SectionCard>
+			) : null}
 		</div>
 	);
 }
 
-function download(result: ScenarioResult) {
+function download(result: StressScenarioResult) {
 	const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
 	const url = URL.createObjectURL(blob);
 	const link = document.createElement('a');

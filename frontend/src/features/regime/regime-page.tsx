@@ -1,6 +1,7 @@
 'use client';
 
 import { RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 
 import { ChartCard, SectionCard } from '@/components/charts/chart-card';
@@ -18,6 +19,7 @@ import {
 } from '@/components/common/states';
 import { PageHeader } from '@/components/layout/top-bar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { daysAgo, formatDate, formatNumber, formatPercent, isoDate } from '@/lib/format';
 import { useRegime } from '@/lib/queries';
@@ -183,13 +185,71 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 						label="Current regime"
 						value={<RegimeBadge label={data?.current_regime} size="lg" />}
 						hint={modelName === 'deterministic_fallback' ? 'fallback labeller' : 'HMM model'}
+						explanation={{ portfolioId, metric: 'current_regime' }}
 					/>
-					<MetricCard label="Confidence" value={formatPercent(confidence)} />
+					<MetricCard
+						label="State fit probability"
+						value={formatPercent(confidence)}
+						hint="Not forecast accuracy"
+						explanation={{ portfolioId, metric: 'regime_confidence' }}
+					/>
 					<MetricCard label="Hidden state" value={data?.current_state ?? '-'} />
 					<MetricCard label="History rows" value={history.length} />
 					<MetricCard label="States" value={Object.keys(data?.state_labels ?? {}).length || '-'} />
 				</div>
 			)}
+
+			{data?.explanation ? (
+				<SectionCard
+					title="Why this regime"
+					description={data.explanation.summary}
+					action={
+						<Button asChild size="sm" variant="outline">
+							<Link
+								href={`/ai-copilot?prompt=${encodeURIComponent('Explain the current regime, its drivers, duration, and likely transition.')}`}
+							>
+								Ask Copilot
+							</Link>
+						</Button>
+					}
+				>
+					<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+						<div className="grid gap-2 sm:grid-cols-2">
+							{data.explanation.drivers.map((driver) => (
+								<div key={driver} className="bg-surface-strong/35 rounded-md border p-3 text-sm">
+									{driver}
+								</div>
+							))}
+						</div>
+						<div className="space-y-3 rounded-md border p-3 text-sm">
+							<div className="flex items-center justify-between gap-3">
+								<span className="text-muted-foreground">Current duration</span>
+								<span className="num font-medium">
+									{data.explanation.current_duration_days} days
+								</span>
+							</div>
+							<div className="flex items-center justify-between gap-3">
+								<span className="text-muted-foreground">Most likely next state</span>
+								<Badge variant="outline">
+									{data.explanation.likely_next_state ?? 'Unavailable'}
+								</Badge>
+							</div>
+							{data.explanation.likely_next_probability !== null &&
+							data.explanation.likely_next_probability !== undefined ? (
+								<div className="flex items-center justify-between gap-3">
+									<span className="text-muted-foreground">Transition probability</span>
+									<span className="num font-medium">
+										{formatPercent(data.explanation.likely_next_probability)}
+									</span>
+								</div>
+							) : null}
+							<p className="text-muted-foreground border-t pt-3 text-xs leading-5">
+								{data.explanation.probability_note}
+							</p>
+						</div>
+					</div>
+				</SectionCard>
+			) : null}
 
 			<div className="grid gap-4 lg:grid-cols-2">
 				<ChartCard title="Regime timeline">

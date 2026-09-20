@@ -46,6 +46,11 @@ export default function MarketPage() {
 			? (Number(latest.close) - Number(first.close)) / Number(first.close)
 			: undefined;
 	const live = market.data?.live_prices?.[0];
+	const livePriceHint = live
+		? `${live.is_stale ? 'Stored close' : 'Provider quote'} · ${formatDate(live.as_of)} · ${live.source}`
+		: latest?.date
+			? `Historical close · ${formatDate(latest.date)}`
+			: undefined;
 	const latestVix = market.data?.vix?.at(-1);
 	const latestFlow = market.data?.fii_dii_flows?.at(-1);
 
@@ -181,10 +186,11 @@ export default function MarketPage() {
 			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 				<MetricCard label="Symbol" value={query || '-'} hint={`${priceRows.length} bars`} />
 				<MetricCard
-					label="Live price"
+					label={live?.is_stale ? 'Latest stored price' : 'Latest price'}
 					value={formatNumber(live?.price ?? latest?.close)}
 					loading={market.isLoading}
-					hint={live?.name ?? (latest?.date ? formatDate(latest.date) : undefined)}
+					hint={livePriceHint}
+					tone={live?.is_stale ? 'warning' : 'neutral'}
 				/>
 				<MetricCard
 					label="Window change"

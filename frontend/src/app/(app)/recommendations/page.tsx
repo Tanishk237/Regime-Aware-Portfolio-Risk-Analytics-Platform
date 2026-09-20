@@ -1,237 +1,259 @@
 'use client';
 
-import { Check, Download, Eye, RefreshCw, RotateCcw } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ArrowRight, Bell, Check, Eye, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
-import { SectionCard } from '@/components/charts/chart-card';
-import { CategoryBadge, SeverityBadge, type Severity } from '@/components/domain/finance';
 import { MetricCard } from '@/components/common/metric-card';
+import { EmptyState, ErrorState, MetricGridSkeleton } from '@/components/common/states';
+import { CategoryBadge, SeverityBadge } from '@/components/domain/finance';
 import { RequirePortfolio } from '@/components/layout/require-portfolio';
-import { EmptyState } from '@/components/common/states';
 import { PageHeader } from '@/components/layout/top-bar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
 import {
-	buildHealthReport,
-	buildRecommendations,
-	type Recommendation
-} from '@/lib/analytics-derive';
-import { formatDateTime } from '@/lib/format';
-import { usePositions, useRegime, useRisk, useSummary } from '@/lib/queries';
-
-const FILTERS: Array<{ label: string; value: Severity | 'all' }> = [
-	{ label: 'All', value: 'all' },
-	{ label: 'High', value: 'high' },
-	{ label: 'Medium', value: 'medium' },
-	{ label: 'Low', value: 'low' }
-];
-
-const CATEGORY_FILTERS = [
-	'All',
-	'Risk',
-	'Diversification',
-	'Regime',
-	'Performance',
-	'Data Quality'
-];
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue
+} from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { errorMessage } from '@/lib/api';
+import { formatDate, formatPercent } from '@/lib/format';
+import { useAlerts, useRecommendations } from '@/lib/queries';
+import type { IntelligenceRecommendation, PortfolioAlert } from '@/lib/types';
 
 export default function RecommendationsRoutePage() {
 	return (
 		<RequirePortfolio label="recommendations">
-			{(id) => <RecommendationsPage portfolioId={id} />}
+			{(id) => <RecommendationCenter portfolioId={id} />}
 		</RequirePortfolio>
 	);
 }
 
-function RecommendationsPage({ portfolioId }: { portfolioId: string }) {
-	const summary = useSummary(portfolioId);
-	const positions = usePositions(portfolioId);
-	const risk = useRisk(portfolioId);
-	const regime = useRegime(portfolioId);
-	const [filter, setFilter] = useState<Severity | 'all'>('all');
-	const [category, setCategory] = useState('All');
-	const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
-
-	const report = buildHealthReport({
-		summary: summary.data,
-		positions: positions.data ?? [],
-		risk: risk.data,
-		regime: regime.data
-	});
-	const all = buildRecommendations(report);
-	const rows = useMemo(
-		() =>
-			all.filter((item) => {
-				const severityMatch = filter === 'all' || item.severity === filter;
-				const categoryMatch = category === 'All' || item.category === category;
-				return severityMatch && categoryMatch;
-			}),
-		[all, category, filter]
+function RecommendationCenter({ portfolioId }: { portfolioId: string }) {
+	const recommendations = useRecommendations(portfolioId);
+	const alerts = useAlerts(portfolioId);
+	const [severity, setSeverity] = useState('all');
+	const [category, setCategory] = useState('all');
+	const rows = recommendations.data ?? [];
+	const categories = [...new Set(rows.map((item) => item.category))].sort();
+	const filtered = rows.filter(
+		(item) =>
+			(severity === 'all' || item.severity === severity) &&
+			(category === 'all' || item.category === category)
 	);
-	const unreadRows = rows.filter((item) => !readIds.has(item.id));
-	const readRows = rows.filter((item) => readIds.has(item.id));
-	const count = (severity: Severity) => all.filter((item) => item.severity === severity).length;
-	const mark = (item: Recommendation, read: boolean) => {
-		setReadIds((current) => {
-			const next = new Set(current);
-			if (read) next.add(item.id);
-			else next.delete(item.id);
-			return next;
-		});
+
+	const markRecommendation = async (item: IntelligenceRecommendation) => {
+		try {
+			await recommendations.setRead.mutateAsync({ id: item.id, isRead: !item.is_read });
+		} catch (error) {
+			toast.error(errorMessage(error));
+		}
 	};
 
-	const exportJson = () => {
-		const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `recommendations-${portfolioId}.json`;
-		link.click();
-		URL.revokeObjectURL(url);
+	const markAlert = async (item: PortfolioAlert) => {
+		try {
+			await alerts.setRead.mutateAsync({ id: item.id, isRead: !item.is_read });
+		} catch (error) {
+			toast.error(errorMessage(error));
+		}
 	};
 
 	return (
 		<div className="space-y-4">
 			<PageHeader
 				title="Recommendations"
-				description="Actions ranked by severity, regenerated whenever your analytics change."
+				description="Evidence-led actions generated from the same portfolio, risk, regime, and profile data used across Latent."
 				actions={
-					<div className="flex gap-2">
-						<Button size="sm" variant="outline" onClick={exportJson} disabled={all.length === 0}>
-							<Download className="size-3.5" /> Export
-						</Button>
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={() => {
-								void risk.refetch();
-								void regime.refetch();
-							}}
-						>
-							<RefreshCw className="size-3.5" /> Regenerate
-						</Button>
-					</div>
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => {
+							void recommendations.refetch();
+							void alerts.refetch();
+						}}
+					>
+						<RefreshCw className="size-3.5" /> Refresh evidence
+					</Button>
 				}
 			/>
 
-			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-				<MetricCard label="Total actions" value={all.length} />
-				<MetricCard label="High priority" value={count('high')} tone="negative" />
-				<MetricCard label="Medium priority" value={count('medium')} tone="warning" />
-				<MetricCard label="Unread" value={all.filter((item) => !readIds.has(item.id)).length} />
-			</div>
-
-			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-				<MetricCard
-					label="Health score"
-					value={`${report.score}/100`}
-					hint={report.category}
-					tone={report.score >= 75 ? 'positive' : report.score >= 50 ? 'warning' : 'negative'}
-				/>
-			</div>
-
-			<div className="space-y-2">
-				<div className="flex flex-wrap gap-2">
-					{FILTERS.map((item) => (
-						<Button
-							key={item.value}
-							size="sm"
-							variant={filter === item.value ? 'default' : 'outline'}
-							onClick={() => setFilter(item.value)}
-						>
-							{item.label}
-						</Button>
-					))}
+			{recommendations.isLoading ? (
+				<MetricGridSkeleton count={4} />
+			) : (
+				<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+					<MetricCard label="Total actions" value={rows.length} />
+					<MetricCard
+						label="High priority"
+						value={rows.filter((item) => item.severity === 'high').length}
+						tone="negative"
+					/>
+					<MetricCard label="Unread" value={rows.filter((item) => !item.is_read).length} />
+					<MetricCard
+						label="Active alerts"
+						value={(alerts.data ?? []).filter((item) => !item.is_read).length}
+						icon={<Bell className="size-4" />}
+					/>
 				</div>
-				<div className="flex flex-wrap gap-2">
-					{CATEGORY_FILTERS.map((item) => (
-						<Button
-							key={item}
-							size="sm"
-							variant={category === item ? 'secondary' : 'outline'}
-							onClick={() => setCategory(item)}
-						>
-							{item}
-						</Button>
-					))}
-				</div>
-			</div>
+			)}
 
-			<Tabs defaultValue="active">
+			<Tabs defaultValue="actions">
 				<TabsList>
-					<TabsTrigger value="active">Active</TabsTrigger>
-					<TabsTrigger value="history">History</TabsTrigger>
+					<TabsTrigger value="actions">Actions</TabsTrigger>
+					<TabsTrigger value="alerts">Alerts</TabsTrigger>
 				</TabsList>
-				<TabsContent value="active" className="mt-3">
-					<RecommendationList
-						rows={unreadRows}
-						emptyTitle="No unread recommendations in this view"
-						onMark={(item) => mark(item, true)}
-						markLabel="Mark read"
-						markIcon={<Check className="size-3.5" />}
-					/>
+				<TabsContent value="actions" className="mt-4 space-y-4">
+					<div className="flex flex-wrap gap-2">
+						<Select value={severity} onValueChange={setSeverity}>
+							<SelectTrigger className="w-[10rem]">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All priorities</SelectItem>
+								<SelectItem value="high">High</SelectItem>
+								<SelectItem value="medium">Medium</SelectItem>
+								<SelectItem value="low">Low</SelectItem>
+							</SelectContent>
+						</Select>
+						<Select value={category} onValueChange={setCategory}>
+							<SelectTrigger className="w-[12rem]">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All categories</SelectItem>
+								{categories.map((item) => (
+									<SelectItem key={item} value={item}>
+										{item}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+					{recommendations.isError ? (
+						<ErrorState
+							error={recommendations.error}
+							onRetry={() => void recommendations.refetch()}
+						/>
+					) : filtered.length ? (
+						<div className="grid gap-3 lg:grid-cols-2">
+							{filtered.map((item) => (
+								<RecommendationCard
+									key={item.id}
+									item={item}
+									onMark={() => void markRecommendation(item)}
+								/>
+							))}
+						</div>
+					) : (
+						<EmptyState
+							title="No matching recommendations"
+							description="The current evidence does not trigger an action in this filter."
+						/>
+					)}
 				</TabsContent>
-				<TabsContent value="history" className="mt-3">
-					<RecommendationList
-						rows={readRows}
-						emptyTitle="No read recommendations yet"
-						onMark={(item) => mark(item, false)}
-						markLabel="Mark unread"
-						markIcon={<RotateCcw className="size-3.5" />}
-					/>
+
+				<TabsContent value="alerts" className="mt-4">
+					{alerts.isError ? (
+						<ErrorState error={alerts.error} onRetry={() => void alerts.refetch()} />
+					) : alerts.data?.length ? (
+						<div className="grid gap-3 lg:grid-cols-2">
+							{alerts.data.map((item) => (
+								<Card key={item.id} className="panel-surface gap-3 p-4">
+									<div className="flex flex-wrap items-center justify-between gap-2">
+										<div className="flex items-center gap-2">
+											<SeverityBadge severity={item.severity} />
+											<Badge variant="outline">{item.alert_type.replaceAll('_', ' ')}</Badge>
+										</div>
+										<span className="text-muted-foreground text-xs">
+											{formatDate(item.detected_at)}
+										</span>
+									</div>
+									<div>
+										<p className="font-medium">{item.title}</p>
+										<p className="text-muted-foreground mt-1 text-sm leading-6">
+											{item.description}
+										</p>
+									</div>
+									{item.evidence ? (
+										<p className="bg-surface-strong/45 rounded-md border p-2.5 text-xs">
+											<span className="text-muted-foreground">Evidence: </span>
+											{item.evidence}
+										</p>
+									) : null}
+									<Button
+										size="sm"
+										variant="ghost"
+										className="self-start"
+										onClick={() => void markAlert(item)}
+									>
+										{item.is_read ? <Eye className="size-3.5" /> : <Check className="size-3.5" />}
+										{item.is_read ? 'Mark unread' : 'Mark read'}
+									</Button>
+								</Card>
+							))}
+						</div>
+					) : (
+						<EmptyState
+							title="No active alerts"
+							description="New data quality and material risk signals will appear here."
+						/>
+					)}
 				</TabsContent>
 			</Tabs>
 		</div>
 	);
 }
 
-function RecommendationList({
-	rows,
-	emptyTitle,
-	onMark,
-	markLabel,
-	markIcon
+function RecommendationCard({
+	item,
+	onMark
 }: {
-	rows: Recommendation[];
-	emptyTitle: string;
-	onMark: (item: Recommendation) => void;
-	markLabel: string;
-	markIcon: React.ReactNode;
+	item: IntelligenceRecommendation;
+	onMark: () => void;
 }) {
-	if (rows.length === 0) return <EmptyState title={emptyTitle} />;
-
+	const prompt = `Explain recommendation: ${item.title}. Use its evidence and tell me what to review before acting.`;
 	return (
-		<div className="space-y-3">
-			{rows.map((item) => (
-				<SectionCard
-					key={item.id}
-					title={item.title}
-					description={item.description}
-					action={
-						<div className="flex flex-wrap items-center gap-2">
-							<SeverityBadge severity={item.severity} />
-							<CategoryBadge category={item.category} />
-							<Button size="sm" variant="outline" onClick={() => onMark(item)}>
-								{markIcon} {markLabel}
-							</Button>
-						</div>
-					}
-				>
-					<div className="grid gap-3 sm:grid-cols-2">
-						<div>
-							<p className="text-muted-foreground text-xs uppercase">Evidence</p>
-							<p className="num mt-1 text-sm font-medium">{item.metric}</p>
-						</div>
-						<div>
-							<p className="text-muted-foreground text-xs uppercase">Suggested action</p>
-							<p className="mt-1 text-sm">{item.action}</p>
-						</div>
-					</div>
-					<p className="text-muted-foreground mt-3 inline-flex items-center gap-1 text-xs">
-						<Eye className="size-3.5" /> Generated {formatDateTime(item.created_at)}
-					</p>
-				</SectionCard>
-			))}
-		</div>
+		<Card className="panel-surface gap-4 p-4">
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap gap-2">
+					<SeverityBadge severity={item.severity} />
+					<CategoryBadge category={item.category} />
+					{item.is_read ? <Badge variant="secondary">Read</Badge> : null}
+				</div>
+				<span className="num text-muted-foreground text-xs">
+					{formatPercent(item.confidence)} rule confidence
+				</span>
+			</div>
+			<div>
+				<p className="font-medium">{item.title}</p>
+				<p className="text-muted-foreground mt-1 text-sm leading-6">{item.description}</p>
+			</div>
+			<div className="grid gap-2 text-sm sm:grid-cols-2">
+				<div className="bg-surface-strong/40 rounded-md border p-3">
+					<p className="text-muted-foreground text-xs font-medium uppercase">Evidence</p>
+					<p className="mt-1.5 leading-5">{item.evidence}</p>
+				</div>
+				<div className="bg-surface-strong/40 rounded-md border p-3">
+					<p className="text-muted-foreground text-xs font-medium uppercase">Action</p>
+					<p className="mt-1.5 leading-5">{item.action}</p>
+				</div>
+			</div>
+			<p className="text-muted-foreground text-xs">Expected effect: {item.expected_impact}</p>
+			<div className="flex flex-wrap gap-2">
+				<Button size="sm" variant="outline" onClick={onMark}>
+					{item.is_read ? <Eye className="size-3.5" /> : <Check className="size-3.5" />}
+					{item.is_read ? 'Mark unread' : 'Mark read'}
+				</Button>
+				<Button asChild size="sm" variant="ghost">
+					<Link href={`/ai-copilot?prompt=${encodeURIComponent(prompt)}`}>
+						Ask Copilot <ArrowRight className="size-3.5" />
+					</Link>
+				</Button>
+			</div>
+		</Card>
 	);
 }

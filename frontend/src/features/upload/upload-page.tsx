@@ -121,9 +121,11 @@ export default function UploadPage() {
 
 			if (repaired.report.valid) {
 				toast.success(
-					repaired.changes.length
-						? `Resolved ${repaired.changes.length} CSV issue${repaired.changes.length === 1 ? '' : 's'}.`
-						: 'The CSV is valid and ready to import.'
+					repaired.changes_truncated
+						? `CSV repaired. Showing the first ${repaired.changes.length} changes.`
+						: repaired.changes.length
+							? `Resolved ${repaired.changes.length} CSV issue${repaired.changes.length === 1 ? '' : 's'}.`
+							: 'The CSV is valid and ready to import.'
 				);
 			} else if (repaired.changes.length) {
 				toast.warning('Safe fixes were applied. Some rows still need your review.');

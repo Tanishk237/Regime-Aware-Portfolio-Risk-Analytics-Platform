@@ -25,6 +25,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	MARKET_DATA_UNAVAILABLE:
 		'Market data provider is temporarily unavailable. Stored data may be used if available.',
 	MARKET_DATA_EMPTY: 'No market data was found for this request.',
+	MARKET_DATA_INCOMPLETE:
+		'The provider is unavailable and stored data does not cover the full requested range.',
 	FII_DII_FILE_NOT_FOUND: 'FII/DII data source is not configured.',
 	PORTFOLIO_RETURNS_EMPTY: 'Portfolio returns are not available yet.',
 	INSUFFICIENT_MARKET_DATA: 'Not enough market data to calculate analytics.',
@@ -35,14 +37,32 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	INVALID_LOGIN: 'Invalid email or password.',
 	INVALID_AUTH_TOKEN: 'Your session is invalid. Please log in again.',
 	TOKEN_EXPIRED: 'Your session expired. Please log in again.',
+	SESSION_REVOKED: 'This session was signed out. Please log in again.',
 	EMAIL_ALREADY_REGISTERED: 'An account with this email already exists.',
 	USER_DISABLED: 'This account is disabled.',
+	RATE_LIMITED: 'Too many requests. Wait a moment and try again.',
+	PORTFOLIO_LIMIT_REACHED: 'Your portfolio limit is reached. Delete one before creating another.',
+	PORTFOLIO_TRADE_LIMIT_REACHED: 'This portfolio has reached its trade limit.',
+	CSV_TOO_MANY_ROWS: 'CSV has too many trade rows.',
+	CSV_TOO_MANY_COLUMNS: 'CSV has too many columns.',
+	CSV_TOO_MANY_CELLS: 'CSV is too large to process safely.',
+	CSV_FIELD_TOO_LONG: 'CSV contains a field that is too long.',
+	REQUEST_TOO_LARGE: 'This upload is larger than the server limit.',
 	AI_API_KEY_REQUIRED: 'Add a valid AI provider key first.',
 	AI_PROMPT_REQUIRED: 'Enter a prompt before asking the copilot.',
 	AI_PROVIDER_ERROR: 'The selected AI provider rejected the request. Check the key and provider.',
 	AI_PROVIDER_UNAVAILABLE: 'The selected AI provider is temporarily unavailable.',
-	AI_PROVIDER_INVALID_RESPONSE: 'The selected AI provider returned an unexpected response.'
+	AI_PROVIDER_INVALID_RESPONSE: 'The selected AI provider returned an unexpected response.',
+	STRESS_CONFIRMATION_REQUIRED: 'Confirm the parsed scenario before running it.',
+	STRESS_VALUE_UNAVAILABLE: 'A complete portfolio valuation is required for this stress test.',
+	STRESS_POSITION_VALUE_UNAVAILABLE:
+		'Every open position needs a current value before stress testing.',
+	REQUEST_TIMEOUT: 'The request took too long. Please retry.'
 };
+
+const configuredTimeout = Number(process.env['NEXT_PUBLIC_API_TIMEOUT_MS'] ?? 60_000);
+const API_TIMEOUT_MS =
+	Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 60_000;
 
 export class ApiError extends Error {
 	code: string;
@@ -119,13 +139,21 @@ async function request<T>(
 		signal?: AbortSignal | undefined;
 	} = {}
 ): Promise<T> {
-	let response: Response;
+	const controller = new AbortController();
+	let timedOut = false;
+	const abortFromCaller = () => controller.abort();
+	if (opts.signal?.aborted) controller.abort();
+	else if (opts.signal) opts.signal.addEventListener('abort', abortFromCaller, { once: true });
+	const timeout = globalThis.setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, API_TIMEOUT_MS);
 	try {
 		const init: RequestInit = {
 			method,
-			credentials: 'include'
+			credentials: 'include',
+			signal: controller.signal
 		};
-		if (opts.signal) init.signal = opts.signal;
 		if (opts.formData) {
 			const guestToken = getGuestAccessToken();
 			if (guestToken) init.headers = { Authorization: `Bearer ${guestToken}` };
@@ -138,17 +166,22 @@ async function request<T>(
 			};
 			if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
 		}
-		response = await fetch(buildUrl(path, opts.params), init);
+		const response = await fetch(buildUrl(path, opts.params), init);
+		return await parse<T>(response);
 	} catch (error) {
+		if (error instanceof ApiError) throw error;
 		throw new ApiError({
-			code: 'NETWORK_ERROR',
-			message:
-				error instanceof Error && error.name === 'AbortError'
+			code: timedOut ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR',
+			message: timedOut
+				? 'The backend request timed out.'
+				: error instanceof Error && error.name === 'AbortError'
 					? 'Request cancelled.'
 					: `Cannot reach the backend at ${API_BASE_URL}.`
 		});
+	} finally {
+		globalThis.clearTimeout(timeout);
+		if (opts.signal) opts.signal.removeEventListener('abort', abortFromCaller);
 	}
-	return parse<T>(response);
 }
 
 export const api = {
@@ -157,7 +190,8 @@ export const api = {
 	post: <T>(path: string, body?: unknown, params?: QueryParams) =>
 		request<T>('POST', path, { body, params }),
 	put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
-	del: <T>(path: string) => request<T>('DELETE', path),
+	patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
+	del: <T>(path: string, body?: unknown) => request<T>('DELETE', path, { body }),
 	upload: <T>(path: string, formData: FormData) => request<T>('POST', path, { formData })
 };
 

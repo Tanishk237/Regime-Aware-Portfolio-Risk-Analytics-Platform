@@ -9,9 +9,12 @@ export default tseslint.config(
 	{
 		ignores: [
 			'.next',
+			'.next-e2e',
 			'dist',
 			'next-env.d.ts',
 			'node_modules',
+			'playwright-report',
+			'test-results',
 			'src/routes',
 			'src/router.tsx',
 			'src/routeTree.gen.ts',

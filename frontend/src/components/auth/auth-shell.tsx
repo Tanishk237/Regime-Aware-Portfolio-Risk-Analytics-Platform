@@ -118,7 +118,7 @@ export function AuthShell({
 	className?: string;
 }) {
 	const router = useRouter();
-	const { continueAsGuest } = useAuth();
+	const { continueAsGuest, hydrated } = useAuth();
 	const demoPortfolio = useDemoPortfolio();
 	const [guestLoading, setGuestLoading] = useState(false);
 
@@ -140,9 +140,9 @@ export function AuthShell({
 	};
 
 	return (
-		<main className="bg-background text-foreground min-h-screen overflow-x-hidden">
+		<main className="bg-background text-foreground flex min-h-screen flex-col overflow-x-hidden">
 			<MarketTape />
-			<div className="mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-7xl grid-cols-1 items-start gap-4 px-5 py-4 sm:gap-6 sm:py-7 md:px-8 lg:grid-cols-5 lg:items-center lg:gap-12 lg:px-12">
+			<div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 items-start gap-4 px-5 py-4 sm:gap-6 sm:py-7 md:px-8 lg:grid-cols-5 lg:items-center lg:gap-12 lg:px-12">
 				<section className="auth-hero-enter flex min-w-0 flex-col justify-center lg:col-span-3">
 					<div className="mb-4 flex items-center justify-between gap-4 sm:mb-8 lg:mb-12">
 						<BrandHeader />
@@ -209,7 +209,7 @@ export function AuthShell({
 										type="button"
 										variant="outline"
 										className="border-border/80 text-foreground hover:border-primary/50 hover:bg-accent h-10 flex-1 bg-transparent shadow-none transition-colors duration-200 ease-in-out"
-										disabled={guestLoading || demoPortfolio.create.isPending}
+										disabled={!hydrated || guestLoading || demoPortfolio.create.isPending}
 										onClick={() => void startGuest()}
 									>
 										{guestLoading ? 'Starting guest session...' : 'Continue as Guest'}
@@ -239,7 +239,7 @@ export function AuthShell({
 									type="button"
 									variant="ghost"
 									className="text-primary hover:text-primary/80 h-8 px-0 text-xs shadow-none hover:bg-transparent"
-									disabled={guestLoading || demoPortfolio.create.isPending}
+									disabled={!hydrated || guestLoading || demoPortfolio.create.isPending}
 									onClick={() => void startGuest(true)}
 								>
 									{demoPortfolio.create.isPending
@@ -257,6 +257,14 @@ export function AuthShell({
 					</Card>
 				</section>
 			</div>
+			<footer className="text-muted-foreground flex flex-wrap items-center justify-center gap-4 px-5 py-4 text-xs">
+				<Link className="hover:text-foreground transition-colors" href="/privacy">
+					Privacy
+				</Link>
+				<Link className="hover:text-foreground transition-colors" href="/terms">
+					Terms and risk disclosure
+				</Link>
+			</footer>
 		</main>
 	);
 }

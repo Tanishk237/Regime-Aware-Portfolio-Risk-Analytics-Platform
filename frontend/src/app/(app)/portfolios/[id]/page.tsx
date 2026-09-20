@@ -143,7 +143,7 @@ export default function PortfolioDetailPage() {
 							action={<RegimeBadge label={regime.data?.current_regime} />}
 						>
 							<p className="text-muted-foreground text-sm">
-								Confidence {formatPercent(regime.data?.confidence ?? regime.data?.probability)} ·
+								State fit {formatPercent(regime.data?.confidence ?? regime.data?.probability)} ·
 								state {regime.data?.current_state ?? '-'}
 							</p>
 						</SectionCard>

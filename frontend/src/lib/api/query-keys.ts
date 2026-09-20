@@ -11,5 +11,12 @@ export const keys = {
 	regime: (id: string, params: unknown) => ['regime', id, params] as const,
 	market: (params: unknown) => ['market', params] as const,
 	historicalPrices: (params: unknown) => ['historical-prices', params] as const,
-	livePrices: (tickers: string[]) => ['live-prices', tickers] as const
+	livePrices: (tickers: string[]) => ['live-prices', tickers] as const,
+	intelligence: (id: string) => ['intelligence', id] as const,
+	recommendations: (id: string) => ['intelligence', id, 'recommendations'] as const,
+	alerts: (id: string) => ['intelligence', id, 'alerts'] as const,
+	riskProfile: ['intelligence', 'profile'] as const,
+	metricExplanation: (id: string, metric: string) =>
+		['intelligence', id, 'metric', metric] as const,
+	aiReports: (id: string) => ['ai', id, 'reports'] as const
 };

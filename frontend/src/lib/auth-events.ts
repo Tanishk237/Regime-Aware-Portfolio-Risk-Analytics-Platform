@@ -1,6 +1,7 @@
 import { clearLegacyAccessToken } from '@/lib/storage';
 
 export const AUTH_FAILURE_EVENT = 'rapra:auth-failure';
+export const PRINCIPAL_CHANGED_EVENT = 'rapra:principal-changed';
 
 const AUTH_FAILURE_CODES = new Set([
 	'AUTH_REQUIRED',
@@ -18,4 +19,9 @@ export function publishAuthFailure(): void {
 	if (typeof window === 'undefined') return;
 	clearLegacyAccessToken();
 	window.dispatchEvent(new Event(AUTH_FAILURE_EVENT));
+}
+
+export function publishPrincipalChanged(): void {
+	if (typeof window === 'undefined') return;
+	window.dispatchEvent(new Event(PRINCIPAL_CHANGED_EVENT));
 }

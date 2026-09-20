@@ -56,6 +56,7 @@ export default function SignupPage() {
 		>
 			<form
 				className="grid gap-4"
+				aria-busy={!hydrated || submitting}
 				onSubmit={(event) => {
 					event.preventDefault();
 					void createAccount();
@@ -63,7 +64,12 @@ export default function SignupPage() {
 			>
 				<div className="grid gap-1.5">
 					<Label htmlFor="name">Full name</Label>
-					<Input id="name" value={name} onChange={(event) => setName(event.target.value)} />
+					<Input
+						id="name"
+						value={name}
+						disabled={!hydrated || submitting}
+						onChange={(event) => setName(event.target.value)}
+					/>
 				</div>
 				<div className="grid gap-1.5">
 					<Label htmlFor="email">Email</Label>
@@ -73,6 +79,7 @@ export default function SignupPage() {
 						value={email}
 						autoComplete="email"
 						required
+						disabled={!hydrated || submitting}
 						onChange={(event) => setEmail(event.target.value)}
 					/>
 				</div>
@@ -85,6 +92,7 @@ export default function SignupPage() {
 						autoComplete="new-password"
 						minLength={8}
 						required
+						disabled={!hydrated || submitting}
 						onChange={(event) => setPassword(event.target.value)}
 					/>
 				</div>
@@ -97,11 +105,12 @@ export default function SignupPage() {
 						autoComplete="new-password"
 						minLength={8}
 						required
+						disabled={!hydrated || submitting}
 						onChange={(event) => setConfirmPassword(event.target.value)}
 					/>
 				</div>
 				{error ? <p className="text-negative text-sm">{error}</p> : null}
-				<Button type="submit" disabled={submitting}>
+				<Button type="submit" disabled={!hydrated || submitting}>
 					{submitting ? 'Creating account...' : 'Create Account'}
 				</Button>
 			</form>

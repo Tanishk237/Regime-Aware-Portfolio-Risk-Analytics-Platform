@@ -36,6 +36,7 @@ Copy `.env.example` and set the backend URL:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+NEXT_PUBLIC_API_TIMEOUT_MS=60000
 NEXT_PUBLIC_APP_ENV=development
 ```
 
@@ -62,6 +63,8 @@ npm audit --omit=dev
 - Auth uses backend `/auth/signup`, `/auth/login`, and `/auth/me` endpoints.
 - Browser sessions use backend-set HttpOnly cookies; API clients can still use bearer tokens from auth responses.
 - API calls are centralized in `src/lib/api.ts`.
+- API requests time out instead of hanging indefinitely, and React Query skips retries for deterministic 4xx errors.
+- Upload intelligence is placed directly in the query cache so the dashboard can reuse it without a duplicate request.
 - Backend response normalization is handled in focused modules under `src/lib/api/`.
 - AI Copilot generates grounded explanations and reports from portfolio, risk, and regime context; provider-key UI is ready for backend AI orchestration.
 - Production build uses `next build --webpack` to avoid Turbopack worker port restrictions in local/sandboxed environments.
