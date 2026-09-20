@@ -1,23 +1,30 @@
 import sys
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.errors import AppError
 from src.api.main import create_app
 from src.config.settings import Settings
+from src.database.session import build_engine
 
 
 def build_client() -> TestClient:
+    database_path = Path(tempfile.mkdtemp(prefix="latent-api-test-")) / "api.db"
     settings = Settings(
         app_name="Regime Test API",
         app_version="9.9.9",
         environment="test",
         api_prefix="/api/v1",
         cors_origins=["http://localhost:3000"],
+        database_url=f"sqlite:///{database_path}",
+        run_migrations_on_startup=True,
     )
 
     return TestClient(
@@ -26,9 +33,8 @@ def build_client() -> TestClient:
 
 
 def test_health_endpoint():
-    client = build_client()
-
-    response = client.get("/api/v1/health")
+    with build_client() as client:
+        response = client.get("/api/v1/health")
 
     assert response.status_code == 200
     payload = response.json()
@@ -36,7 +42,18 @@ def test_health_endpoint():
     assert payload["status"] == "ok"
     assert payload["service"] == "Regime Test API"
     assert payload["environment"] == "test"
+    assert payload["database"] == "sqlite"
     assert "timestamp" in payload
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_readiness_confirms_database_and_migrations():
+    with build_client() as client:
+        response = client.get("/api/v1/ready")
+
+    assert response.status_code == 200
+    assert response.json()["database"] == "sqlite"
+    assert response.json()["migration"] == "0010_add_user_token_version"
 
 
 def test_version_endpoint():
@@ -114,3 +131,96 @@ def test_cors_allows_configured_frontend_origin():
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_deployment_lists_accept_json_or_comma_separated_values():
+    json_settings = Settings(
+        environment="test",
+        cors_origins='["https://latent.example"]',
+        trusted_hosts='["latent.example"]',
+        nvidia_fallback_models='["model-a", "model-b"]',
+    )
+    comma_settings = Settings(
+        environment="test",
+        cors_origins="https://one.example, https://two.example",
+        trusted_hosts="one.example,two.example",
+    )
+
+    assert json_settings.cors_origins == ["https://latent.example"]
+    assert json_settings.trusted_hosts == ["latent.example"]
+    assert json_settings.nvidia_fallback_models == ["model-a", "model-b"]
+    assert comma_settings.cors_origins == [
+        "https://one.example",
+        "https://two.example",
+    ]
+    assert comma_settings.trusted_hosts == ["one.example", "two.example"]
+
+
+def test_large_responses_are_compressed_and_timed():
+    settings = Settings(
+        environment="test",
+        database_url="sqlite://",
+        run_migrations_on_startup=True,
+        gzip_minimum_size_bytes=256,
+    )
+    app = create_app(settings)
+
+    @app.get("/large-response")
+    def large_response():
+        return JSONResponse({"payload": "x" * 5000})
+
+    response = TestClient(app).get(
+        "/large-response",
+        headers={"Accept-Encoding": "gzip"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-encoding"] == "gzip"
+    assert response.headers["server-timing"].startswith("app;dur=")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["x-request-id"]
+
+
+def test_oversized_request_is_rejected_before_body_parsing():
+    settings = Settings(
+        environment="test",
+        database_url="sqlite://",
+        run_migrations_on_startup=True,
+        csv_upload_max_bytes=512,
+        request_body_max_bytes=1024,
+    )
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/auth/login",
+            content=b"x" * 2048,
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "REQUEST_TOO_LARGE"
+
+
+def test_valid_request_id_is_propagated():
+    with build_client() as client:
+        response = client.get(
+            "/api/v1/health",
+            headers={"X-Request-ID": "release-check-123"},
+        )
+
+    assert response.headers["x-request-id"] == "release-check-123"
+
+
+def test_sqlite_connections_enforce_integrity_and_concurrency_pragmas(tmp_path):
+    engine = build_engine(f"sqlite:///{tmp_path / 'configured.db'}")
+    try:
+        with engine.connect() as connection:
+            foreign_keys = connection.execute(text("PRAGMA foreign_keys")).scalar_one()
+            busy_timeout = connection.execute(text("PRAGMA busy_timeout")).scalar_one()
+            journal_mode = connection.execute(text("PRAGMA journal_mode")).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert foreign_keys == 1
+    assert busy_timeout == 5000
+    assert journal_mode == "wal"

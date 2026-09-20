@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, Boolean, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.base import Base
@@ -18,6 +18,7 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -40,7 +41,7 @@ class Portfolio(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     base_currency: Mapped[str] = mapped_column(String(12), nullable=False, default="INR")
     benchmark: Mapped[str] = mapped_column(String(64), nullable=False, default="NIFTY50")
-    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -188,7 +189,7 @@ class Recommendation(Base):
     action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     expected_impact: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -230,7 +231,7 @@ class PortfolioAlert(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -276,6 +277,26 @@ class AIReport(Base):
     )
     data_as_of: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RateLimitWindow(Base):
+    __tablename__ = "rate_limit_windows"
+    __table_args__ = (
+        UniqueConstraint(
+            "bucket",
+            "identity_hash",
+            "window_start",
+            name="uq_rate_limit_window",
+        ),
+        Index("ix_rate_limit_windows_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bucket: Mapped[str] = mapped_column(String(64), nullable=False)
+    identity_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class MarketPrice(Base):

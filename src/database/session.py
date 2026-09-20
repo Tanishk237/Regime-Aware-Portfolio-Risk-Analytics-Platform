@@ -6,17 +6,32 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.config import get_settings
 from src.database.base import Base
 
 
-def build_engine(database_url: str | None = None) -> Engine:
+def build_engine(
+    database_url: str | None = None,
+    *,
+    pool_size: int = 5,
+    max_overflow: int = 10,
+    pool_timeout_seconds: int = 30,
+    pool_recycle_seconds: int = 1800,
+    ssl_mode: str = "disable",
+) -> Engine:
     database_url = database_url or get_settings().database_url
     connect_args = {}
+    engine_kwargs = {
+        "connect_args": connect_args,
+        "pool_pre_ping": True,
+    }
 
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+        if database_url in {"sqlite://", "sqlite:///:memory:"}:
+            engine_kwargs["poolclass"] = StaticPool
         if database_url.startswith("sqlite:///"):
             db_path = database_url.replace("sqlite:///", "", 1)
             if db_path not in (":memory:", ""):
@@ -25,11 +40,16 @@ def build_engine(database_url: str | None = None) -> Engine:
                     exist_ok=True,
                 )
 
-    engine = create_engine(
-        database_url,
-        connect_args=connect_args,
-        pool_pre_ping=True,
-    )
+    if database_url.startswith("postgresql"):
+        connect_args["sslmode"] = ssl_mode
+        engine_kwargs.update(
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_timeout=pool_timeout_seconds,
+            pool_recycle=pool_recycle_seconds,
+        )
+
+    engine = create_engine(database_url, **engine_kwargs)
 
     if database_url.startswith("sqlite"):
         is_memory_database = database_url in {"sqlite://", "sqlite:///:memory:"}

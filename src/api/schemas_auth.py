@@ -45,6 +45,18 @@ class LoginRequest(BaseModel):
         return SignupRequest.validate_email(value)
 
 
+class DeleteAccountRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+    confirmation: str
+
+    @field_validator("confirmation")
+    @classmethod
+    def validate_confirmation(cls, value: str) -> str:
+        if value != "DELETE":
+            raise ValueError("Type DELETE to confirm account deletion.")
+        return value
+
+
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

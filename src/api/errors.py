@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 from fastapi import FastAPI, Request, status
@@ -19,11 +21,13 @@ class AppError(Exception):
         code: str = "APP_ERROR",
         status_code: int = status.HTTP_400_BAD_REQUEST,
         details=None,
+        headers: dict[str, str] | None = None,
     ):
         self.message = message
         self.code = code
         self.status_code = status_code
         self.details = details
+        self.headers = headers or {}
 
 
 def build_error_response(
@@ -32,6 +36,7 @@ def build_error_response(
     message: str,
     status_code: int,
     details=None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     payload = ErrorResponse(
         error=APIError(
@@ -44,6 +49,7 @@ def build_error_response(
     return JSONResponse(
         status_code=status_code,
         content=payload.model_dump(mode="json"),
+        headers=headers,
     )
 
 
@@ -63,6 +69,7 @@ async def app_error_handler(
         message=exc.message,
         status_code=exc.status_code,
         details=exc.details,
+        headers=exc.headers,
     )
 
 

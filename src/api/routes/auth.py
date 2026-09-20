@@ -1,33 +1,22 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import delete, select
+from fastapi import APIRouter, Depends, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.api.dependencies import get_current_user
 from src.api.errors import AppError
-from src.api.schemas_auth import AuthResponse, LoginRequest, SignupRequest, UserRead
+from src.api.schemas_auth import AuthResponse, DeleteAccountRequest, LoginRequest, SignupRequest, UserRead
 from src.auth import create_access_token, hash_password, verify_password
+from src.auth.lifecycle import delete_user
+from src.auth.rate_limit import enforce_rate_limit, request_identity
 from src.config import Settings, get_settings
 from src.database import get_db
-from src.database.models import (
-    AIReport,
-    Portfolio,
-    PortfolioAlert,
-    PortfolioReturn,
-    Position,
-    Recommendation,
-    RegimePrediction,
-    RiskProfile,
-    RiskMetric,
-    StressResult,
-    Trade,
-    User,
-)
+from src.database.models import User
 
 
 router = APIRouter(prefix="/auth")
@@ -39,43 +28,13 @@ def _token_response(user: User, settings: Settings) -> AuthResponse:
         subject=str(user.id),
         secret_key=settings.auth_secret_key,
         expires_delta=expires,
-        extra_claims={"email": user.email},
+        extra_claims={"email": user.email, "ver": user.token_version},
     )
     return AuthResponse(
         access_token=token,
         expires_in=int(expires.total_seconds()),
         user=UserRead.model_validate(user),
     )
-
-
-def _delete_guest_users(db: Session, user_ids) -> None:
-    portfolio_ids = select(Portfolio.id).where(Portfolio.user_id.in_(user_ids))
-    for model in (
-        AIReport,
-        PortfolioAlert,
-        Recommendation,
-        RegimePrediction,
-        RiskMetric,
-        PortfolioReturn,
-        StressResult,
-        Position,
-        Trade,
-    ):
-        db.execute(delete(model).where(model.portfolio_id.in_(portfolio_ids)))
-    db.execute(delete(Portfolio).where(Portfolio.user_id.in_(user_ids)))
-    db.execute(delete(RiskProfile).where(RiskProfile.user_id.in_(user_ids)))
-    db.execute(delete(User).where(User.id.in_(user_ids)))
-    db.commit()
-
-
-def _delete_expired_guest_users(db: Session, settings: Settings) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.guest_data_retention_hours)
-    guest_user_ids = select(User.id).where(
-        User.email.like("%@guest.latent.local"),
-        User.password_hash.is_(None),
-        User.created_at < cutoff,
-    )
-    _delete_guest_users(db, guest_user_ids)
 
 
 def _set_auth_cookie(
@@ -105,10 +64,18 @@ def _clear_auth_cookie(response: Response, settings: Settings) -> None:
 
 @router.post("/guest", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def guest_session(
+    request: Request,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
-    _delete_expired_guest_users(db, settings)
+    enforce_rate_limit(
+        db,
+        bucket="auth:guest",
+        identity=request_identity(request),
+        limit=settings.guest_rate_limit,
+        window_seconds=settings.signup_rate_limit_window_seconds,
+        secret_key=settings.auth_secret_key,
+    )
     user = User(
         email=f"guest-{secrets.token_urlsafe(18).lower()}@guest.latent.local",
         full_name="Guest",
@@ -124,7 +91,7 @@ def guest_session(
         subject=str(user.id),
         secret_key=settings.auth_secret_key,
         expires_delta=expires,
-        extra_claims={"email": user.email, "guest": True},
+        extra_claims={"email": user.email, "guest": True, "ver": user.token_version},
     )
     return AuthResponse(
         access_token=token,
@@ -136,10 +103,19 @@ def guest_session(
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def signup(
     payload: SignupRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
+    enforce_rate_limit(
+        db,
+        bucket="auth:signup",
+        identity=request_identity(request),
+        limit=settings.auth_signup_rate_limit,
+        window_seconds=settings.signup_rate_limit_window_seconds,
+        secret_key=settings.auth_secret_key,
+    )
     email = payload.email.lower()
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None:
@@ -164,7 +140,7 @@ def signup(
         response,
         auth.access_token,
         settings,
-        max_age=settings.access_token_expire_minutes * 60,
+        max_age=None,
     )
     return auth
 
@@ -172,10 +148,19 @@ def signup(
 @router.post("/login", response_model=AuthResponse)
 def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
+    enforce_rate_limit(
+        db,
+        bucket="auth:login",
+        identity=request_identity(request),
+        limit=settings.auth_login_rate_limit,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+        secret_key=settings.auth_secret_key,
+    )
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
     if user is None or not verify_password(payload.password, user.password_hash):
         raise AppError(
@@ -208,8 +193,13 @@ def me(user: User = Depends(get_current_user)) -> User:
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> None:
+    user.token_version += 1
+    db.add(user)
+    db.commit()
     _clear_auth_cookie(response, settings)
 
 
@@ -224,4 +214,28 @@ def end_guest_session(
             code="GUEST_SESSION_REQUIRED",
             status_code=400,
         )
-    _delete_guest_users(db, [user.id])
+    delete_user(db, user)
+
+
+@router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    payload: DeleteAccountRequest,
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    if user.is_guest:
+        raise AppError(
+            "Guest sessions should be ended instead of deleting an account.",
+            code="ACCOUNT_REQUIRED",
+            status_code=400,
+        )
+    if not verify_password(payload.password, user.password_hash):
+        raise AppError(
+            "The password is incorrect.",
+            code="INVALID_LOGIN",
+            status_code=401,
+        )
+    delete_user(db, user)
+    _clear_auth_cookie(response, settings)

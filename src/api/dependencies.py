@@ -60,4 +60,18 @@ def get_current_user(
             status_code=403,
         )
 
+    if payload.get("guest") is True and not user.is_guest:
+        raise AppError(
+            "Could not validate authentication credentials.",
+            code="INVALID_AUTH_TOKEN",
+            status_code=401,
+        )
+
+    if payload.get("ver") != user.token_version:
+        raise AppError(
+            "This session has been revoked. Please log in again.",
+            code="SESSION_REVOKED",
+            status_code=401,
+        )
+
     return user
