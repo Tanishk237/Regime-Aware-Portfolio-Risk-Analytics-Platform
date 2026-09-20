@@ -39,9 +39,17 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     from sqlalchemy import create_engine
 
+    database_url = get_database_url()
+    connect_args = {}
+    if database_url.startswith("postgresql"):
+        connect_args["sslmode"] = (
+            config.attributes.get("database_ssl_mode")
+            or get_settings().database_ssl_mode
+        )
     connectable = create_engine(
-        get_database_url(),
+        database_url,
         pool_pre_ping=True,
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:

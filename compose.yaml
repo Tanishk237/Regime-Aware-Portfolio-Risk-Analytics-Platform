@@ -1,0 +1,68 @@
+name: latent
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: latent
+      POSTGRES_USER: latent
+      POSTGRES_PASSWORD: latent
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - latent-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U latent -d latent"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://latent:latent@db:5432/latent
+      DATABASE_SSL_MODE: disable
+      RUN_MIGRATIONS_ON_STARTUP: "true"
+      CREATE_DB_ON_STARTUP: "false"
+      CORS_ORIGINS: http://localhost:3000
+      TRUSTED_HOSTS: localhost,127.0.0.1,api
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        NEXT_PUBLIC_APP_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  latent-postgres:

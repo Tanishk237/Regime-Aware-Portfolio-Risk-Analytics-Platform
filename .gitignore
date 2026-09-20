@@ -7,6 +7,9 @@ __pycache__/
 htmlcov/
 
 data/*.db
+data/*.db-*
+data/*.db-shm
+data/*.db-wal
 data/*.sqlite
 data/*.sqlite3
 
@@ -17,4 +20,10 @@ env/
 .env
 .env.*
 !.env.example
+!.env.production.example
 !frontend/.env.example
+!frontend/.env.production.example
+
+playwright-report/
+test-results/
+backups/

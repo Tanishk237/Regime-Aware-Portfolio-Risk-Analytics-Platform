@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ ! -x "${ROOT_DIR}/venv/bin/alembic" ]]; then
+	echo "Backend venv not found. Create it and install requirements first."
+	exit 1
+fi
+
+DATABASE_URL_VALUE="$(awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/, ""); print; exit}' "${ROOT_DIR}/.env" 2>/dev/null || true)"
+if [[ "${DATABASE_URL_VALUE}" == postgresql*localhost* || "${DATABASE_URL_VALUE}" == postgresql*127.0.0.1* ]]; then
+	if ! command -v docker >/dev/null 2>&1; then
+		echo "Local PostgreSQL is configured but Docker is unavailable. Install Docker or point DATABASE_URL at a managed PostgreSQL database."
+		exit 1
+	fi
+	echo "Starting local PostgreSQL..."
+	docker compose -f "${ROOT_DIR}/compose.yaml" up -d db
+	for _ in {1..30}; do
+		if docker compose -f "${ROOT_DIR}/compose.yaml" exec -T db pg_isready -U latent -d latent >/dev/null 2>&1; then
+			break
+		fi
+		sleep 1
+	done
+	if ! docker compose -f "${ROOT_DIR}/compose.yaml" exec -T db pg_isready -U latent -d latent >/dev/null 2>&1; then
+		echo "PostgreSQL did not become ready in time."
+		exit 1
+	fi
+fi
+
+echo "Applying database migrations..."
+(
+	cd "${ROOT_DIR}"
+	"${ROOT_DIR}/venv/bin/alembic" upgrade head
+)
+
+echo "Database is ready."

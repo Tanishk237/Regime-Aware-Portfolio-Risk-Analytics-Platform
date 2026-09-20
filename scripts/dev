@@ -34,6 +34,8 @@ if [[ ! -d "${ROOT_DIR}/frontend/node_modules" ]]; then
 	exit 1
 fi
 
+"${ROOT_DIR}/scripts/bootstrap"
+
 echo "Starting Latent backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 (
 	cd "${ROOT_DIR}"

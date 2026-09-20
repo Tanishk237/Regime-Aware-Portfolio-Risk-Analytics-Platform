@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKUP_FILE="${1:-}"
+
+if [[ ! -f "${BACKUP_FILE}" ]]; then
+	echo "Usage: PGSERVICE=latent CONFIRM_RESTORE=RESTORE $0 backup.dump"
+	exit 1
+fi
+if [[ "${CONFIRM_RESTORE:-}" != "RESTORE" ]]; then
+	echo "Restore replaces objects in the target database. Set CONFIRM_RESTORE=RESTORE to continue."
+	exit 1
+fi
+if ! command -v pg_restore >/dev/null 2>&1; then
+	echo "pg_restore is required. Install PostgreSQL client tools first."
+	exit 1
+fi
+
+if [[ -n "${PGSERVICE:-}" ]]; then
+	CONNECTION_ARGS=(--dbname="service=${PGSERVICE}")
+else
+	: "${PGHOST:?Set PGHOST or PGSERVICE.}"
+	: "${PGDATABASE:?Set PGDATABASE or PGSERVICE.}"
+	: "${PGUSER:?Set PGUSER or PGSERVICE.}"
+	if [[ -z "${PGPASSFILE:-}" ]]; then
+		echo "Set PGPASSFILE to a mode-0600 password file, or configure PGSERVICE."
+		exit 1
+	fi
+	CONNECTION_ARGS=(--host="${PGHOST}" --port="${PGPORT:-5432}" --username="${PGUSER}" --dbname="${PGDATABASE}")
+fi
+export PGSSLMODE="${PGSSLMODE:-verify-full}"
+
+pg_restore \
+	"${CONNECTION_ARGS[@]}" \
+	--clean \
+	--if-exists \
+	--no-owner \
+	--no-acl \
+	--single-transaction \
+	"${BACKUP_FILE}"
+echo "Restore completed. Run alembic upgrade head before starting the API."

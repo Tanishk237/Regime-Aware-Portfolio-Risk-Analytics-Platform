@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKUP_DIR="${BACKUP_DIR:-${HOME}/.local/share/latent/backups}"
+if ! command -v pg_dump >/dev/null 2>&1; then
+	echo "pg_dump is required. Install PostgreSQL client tools first."
+	exit 1
+fi
+
+if [[ -n "${PGSERVICE:-}" ]]; then
+	CONNECTION_ARGS=(--dbname="service=${PGSERVICE}")
+else
+	: "${PGHOST:?Set PGHOST or PGSERVICE.}"
+	: "${PGDATABASE:?Set PGDATABASE or PGSERVICE.}"
+	: "${PGUSER:?Set PGUSER or PGSERVICE.}"
+	if [[ -z "${PGPASSFILE:-}" ]]; then
+		echo "Set PGPASSFILE to a mode-0600 password file, or configure PGSERVICE."
+		exit 1
+	fi
+	CONNECTION_ARGS=(--host="${PGHOST}" --port="${PGPORT:-5432}" --username="${PGUSER}" --dbname="${PGDATABASE}")
+fi
+export PGSSLMODE="${PGSSLMODE:-verify-full}"
+
+mkdir -p "${BACKUP_DIR}"
+umask 077
+OUTPUT="${BACKUP_DIR}/latent-$(date -u +%Y%m%dT%H%M%SZ).dump"
+pg_dump "${CONNECTION_ARGS[@]}" --format=custom --no-owner --no-acl --file="${OUTPUT}"
+echo "Encrypted-at-rest storage is the operator's responsibility. Backup written to ${OUTPUT}"
