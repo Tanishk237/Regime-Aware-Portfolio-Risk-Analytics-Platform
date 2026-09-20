@@ -48,3 +48,4 @@ class MarketDataService(
         self.cache_ttl_seconds = cache_ttl_seconds
         self.allow_demo_data = allow_demo_data
         self.instrument_metadata_ttl_days = instrument_metadata_ttl_days
+        self.fetch_metadata: dict[str, dict] = {}

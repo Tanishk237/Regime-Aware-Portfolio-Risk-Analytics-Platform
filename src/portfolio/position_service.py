@@ -176,6 +176,9 @@ class PortfolioPositionService:
         AnalyticsService(
             self.db,
             market_data_service=self.market_data_service,
+            runtime_hmm_fit_enabled=self.runtime_hmm_fit_enabled,
+            max_regime_observations=self.max_regime_observations,
+            max_history_days=self.max_market_history_days,
         ).build_risk_payload(
             user,
             portfolio.id,

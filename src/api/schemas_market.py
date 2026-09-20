@@ -14,6 +14,7 @@ class HistoricalPricePoint(BaseModel):
     low: Optional[float] = None
     close: float
     volume: Optional[float] = None
+    source: Optional[str] = None
 
 
 class HistoricalPricesResponse(BaseModel):
@@ -22,12 +23,19 @@ class HistoricalPricesResponse(BaseModel):
     start_date: date
     end_date: Optional[date] = None
     prices: list[HistoricalPricePoint]
+    source: str
+    fallback_used: bool = False
+    coverage_complete: bool
+    as_of: Optional[date] = None
 
 
 class LivePricePoint(BaseModel):
     ticker: str
     price: float
     name: Optional[str] = None
+    source: str
+    as_of: date
+    is_stale: bool = False
 
 
 class LivePricesResponse(BaseModel):
@@ -46,6 +54,10 @@ class VIXHistoryResponse(BaseModel):
     start_date: date
     end_date: Optional[date] = None
     points: list[VIXPoint]
+    source: str
+    fallback_used: bool = False
+    coverage_complete: bool
+    as_of: Optional[date] = None
 
 
 class FIIDIIFlowPoint(BaseModel):
@@ -74,7 +86,7 @@ class MarketIndexResponse(BaseModel):
 
 
 class FeatureMatrixRequest(BaseModel):
-    tickers: list[str] = Field(..., min_length=1)
+    tickers: list[str] = Field(..., min_length=1, max_length=20)
     start_date: date
     end_date: Optional[date] = None
     weights: Optional[list[float]] = None

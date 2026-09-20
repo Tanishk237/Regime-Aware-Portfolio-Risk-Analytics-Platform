@@ -177,6 +177,7 @@ class CsvResolutionChange(BaseModel):
 class PortfolioCsvResolutionResponse(BaseModel):
     resolved_csv: str
     changes: list[CsvResolutionChange]
+    changes_truncated: bool = False
     report: PortfolioCsvPreviewResponse
 
 

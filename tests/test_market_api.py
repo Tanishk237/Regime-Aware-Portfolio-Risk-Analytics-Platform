@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.main import create_app
+from src.api.dependencies import get_current_user
+from src.api.errors import AppError
 from src.config.settings import Settings
 from src.database.models import (
     FIIDIIHistory,
@@ -16,6 +18,7 @@ from src.database.models import (
     MarketFeature,
     MarketPrice,
     VIXHistory,
+    User,
 )
 from src.market.cache import InMemoryMarketDataCache, market_data_cache
 from src.market.market_service import MarketDataService
@@ -30,7 +33,15 @@ def build_client(tmp_path, *, fii_dii_csv_path: str = "data/external/fii_dii.csv
         run_migrations_on_startup=True,
         fii_dii_csv_path=fii_dii_csv_path,
     )
-    return TestClient(create_app(settings))
+    app = create_app(settings)
+    app.dependency_overrides[get_current_user] = lambda: User(
+        id=1,
+        email="market-test@example.com",
+        full_name="Market Test",
+        password_hash="test",
+        is_active=True,
+    )
+    return TestClient(app)
 
 
 def test_historical_prices_are_normalized_and_persisted(tmp_path, monkeypatch):
@@ -110,9 +121,84 @@ def test_live_prices_return_frontend_ready_shape(tmp_path, monkeypatch):
                     "ticker": "RELIANCE.NS",
                     "price": 2500.5,
                     "name": "RELIANCE.NS Limited",
+                    "source": "yahoo",
+                    "as_of": date.today().isoformat(),
+                    "is_stale": False,
                 }
             ],
         }
+
+
+def test_public_live_prices_reject_oversized_ticker_requests(tmp_path):
+    settings = Settings(
+        environment="test",
+        database_url=f"sqlite:///{tmp_path / 'ticker-limit.db'}",
+        run_migrations_on_startup=True,
+        market_data_max_tickers_per_request=2,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        response = client.get(
+            "/api/v1/market/live-prices",
+            params={"tickers": "RELIANCE.NS,INFY.NS,TCS.NS"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "TOO_MANY_TICKERS"
+
+
+def test_historical_market_data_requires_authentication(tmp_path):
+    settings = Settings(
+        environment="test",
+        database_url=f"sqlite:///{tmp_path / 'market-auth.db'}",
+        run_migrations_on_startup=True,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        response = client.get(
+            "/api/v1/market/historical-prices",
+            params={
+                "tickers": "RELIANCE.NS",
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-02",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
+def test_live_price_fallback_identifies_stored_stale_data(tmp_path):
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        try:
+            db.add(
+                MarketPrice(
+                    ticker="RELIANCE.NS",
+                    date=date(2024, 1, 1),
+                    close=105,
+                    data_source="provider",
+                )
+            )
+            db.commit()
+            records = MarketDataService(
+                db,
+                provider=FailingProvider(),
+                cache=InMemoryMarketDataCache(),
+            ).get_live_prices(["RELIANCE.NS"])
+
+            assert records == [
+                {
+                    "ticker": "RELIANCE.NS",
+                    "price": 105,
+                    "name": None,
+                    "source": "stored:provider",
+                    "as_of": date(2024, 1, 1),
+                    "is_stale": True,
+                }
+            ]
+        finally:
+            db.close()
 
 
 def test_india_vix_history_persists_snapshot(tmp_path, monkeypatch):
@@ -413,7 +499,7 @@ def test_market_cache_is_bounded_and_evicts_oldest_entry():
     assert cache.get("third") == {"price": 3}
 
 
-def test_provider_failure_falls_back_to_stored_historical_prices(tmp_path):
+def test_provider_failure_rejects_incomplete_stored_historical_prices(tmp_path):
     with build_client(tmp_path) as client:
         db = client.app.state.session_factory()
         try:
@@ -435,14 +521,57 @@ def test_provider_failure_falls_back_to_stored_historical_prices(tmp_path):
                 provider=FailingProvider(),
                 cache=InMemoryMarketDataCache(),
             )
+            with pytest.raises(AppError) as exc_info:
+                service.get_historical_prices(
+                    ["RELIANCE.NS"],
+                    date(2024, 1, 1),
+                    date(2024, 1, 2),
+                )
+
+            assert exc_info.value.code == "MARKET_DATA_INCOMPLETE"
+            assert exc_info.value.status_code == 503
+        finally:
+            db.close()
+
+
+def test_historical_prices_return_provider_records_without_persisting(tmp_path):
+    class HistoricalProvider(CountingProvider):
+        def get_ohlcv(self, tickers, start_date, end_date=None):
+            close = pd.Series(
+                [100.0, 101.0],
+                index=pd.to_datetime(["2024-01-01", "2024-01-02"]),
+            )
+            return pd.DataFrame(
+                {
+                    "Open": close,
+                    "High": close + 1,
+                    "Low": close - 1,
+                    "Close": close,
+                    "Volume": 1000,
+                },
+                index=close.index,
+            )
+
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        try:
+            service = MarketDataService(
+                db,
+                provider=HistoricalProvider(),
+                cache=InMemoryMarketDataCache(),
+            )
             records = service.get_historical_prices(
                 ["RELIANCE.NS"],
                 date(2024, 1, 1),
                 date(2024, 1, 2),
+                persist=False,
             )
 
-            assert len(records) == 1
-            assert records[0]["close"] == 105
+            assert len(records) == 2
+            assert records[-1]["close"] == 101
+            assert records[-1]["source"] == "counting"
+            assert db.query(MarketPrice).count() == 0
+            assert service.fetch_metadata["historical"]["coverage_complete"] is True
         finally:
             db.close()
 

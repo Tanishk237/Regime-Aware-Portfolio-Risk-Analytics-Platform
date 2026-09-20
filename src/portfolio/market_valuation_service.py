@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 
@@ -58,9 +58,13 @@ class PortfolioMarketValuationService:
     ) -> None:
         try:
             self.market_data_service.allow_demo_data = include_demo_data
+            bounded_start = max(
+                start_date,
+                date.today() - timedelta(days=self.max_market_history_days),
+            )
             self.market_data_service.get_historical_prices(
                 tickers,
-                start_date,
+                bounded_start,
                 date.today(),
                 persist=True,
             )

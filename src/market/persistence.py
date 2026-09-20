@@ -83,6 +83,7 @@ class MarketDataPersistence:
                 "low": row.low,
                 "close": row.close,
                 "volume": row.volume,
+                "source": row.data_source,
             }
             for row in query.all()
         ]
@@ -162,6 +163,7 @@ class MarketDataPersistence:
             "ticker": row.ticker,
             "date": row.date,
             "close": row.close,
+            "data_source": row.data_source,
         }
 
     def _get_stored_vix(

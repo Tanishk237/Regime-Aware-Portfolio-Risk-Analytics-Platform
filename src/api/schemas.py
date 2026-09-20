@@ -20,6 +20,16 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     service: str
     environment: str
+    database: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReadinessResponse(BaseModel):
+    success: bool = True
+    status: str = "ready"
+    service: str
+    database: str
+    migration: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

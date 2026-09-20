@@ -43,6 +43,7 @@ class MarketFeatureService:
                 end_date,
                 persist=persist,
             )
+            price_provenance = dict(self.fetch_metadata.get("historical", {}))
             prices = self._price_records_to_frame(price_records)
             returns = prices.pct_change().dropna()
             if returns.empty:
@@ -58,6 +59,7 @@ class MarketFeatureService:
                 persist=persist,
                 warnings=warnings,
             )
+            vix_provenance = dict(self.fetch_metadata.get("vix", {}))
             flows = self._optional_flow_frame(
                 filepath=fii_dii_path,
                 start_date=start_date,
@@ -87,6 +89,12 @@ class MarketFeatureService:
         metadata["fallback_used"] = bool(warnings)
         metadata["price_rows"] = len(price_records)
         metadata["merged_rows"] = len(merged)
+        metadata["market_data_provenance"] = self._json_ready(
+            {
+                "historical_prices": price_provenance,
+                "india_vix": vix_provenance,
+            }
+        )
 
         records = [
             {

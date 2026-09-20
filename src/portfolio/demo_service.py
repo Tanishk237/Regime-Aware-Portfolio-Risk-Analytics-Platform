@@ -4,9 +4,10 @@ import logging
 import math
 from datetime import date, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from src.analytics import AnalyticsService
+from src.api.errors import AppError
 from src.database.models import (
     MarketPrice,
     Portfolio,
@@ -53,8 +54,22 @@ class _StoredDataOnlyProvider(MarketDataProvider):
 
 
 class PortfolioDemoService:
-    def __init__(self, db):
+    def __init__(
+        self,
+        db,
+        *,
+        runtime_hmm_fit_enabled: bool = True,
+        max_regime_observations: int = 1_500,
+        max_history_days: int = 3_650,
+        max_portfolios_per_user: int = 50,
+        max_portfolios_per_guest: int = 5,
+    ):
         self.db = db
+        self.runtime_hmm_fit_enabled = runtime_hmm_fit_enabled
+        self.max_regime_observations = max_regime_observations
+        self.max_history_days = max_history_days
+        self.max_portfolios_per_user = max_portfolios_per_user
+        self.max_portfolios_per_guest = max_portfolios_per_guest
 
     def create_demo_portfolio(
         self,
@@ -72,6 +87,22 @@ class PortfolioDemoService:
 
         if existing is not None:
             self._delete_demo_portfolio(existing.id)
+        else:
+            portfolio_count = self.db.scalar(
+                select(func.count(Portfolio.id)).where(Portfolio.user_id == user.id)
+            ) or 0
+            maximum = (
+                self.max_portfolios_per_guest
+                if user.is_guest
+                else self.max_portfolios_per_user
+            )
+            if portfolio_count >= maximum:
+                raise AppError(
+                    "Portfolio limit reached. Delete an existing portfolio before creating the demo.",
+                    code="PORTFOLIO_LIMIT_REACHED",
+                    status_code=409,
+                    details={"maximum": maximum},
+                )
 
         start_date = date.today() - timedelta(days=DEMO_START_DAYS)
         self._seed_market_history(start_date)
@@ -162,7 +193,13 @@ class PortfolioDemoService:
     def _precompute_analytics(self, user: User, portfolio_id: int, start_date: date) -> bool:
         try:
             market_service = MarketDataService(self.db, provider=_StoredDataOnlyProvider())
-            analytics = AnalyticsService(self.db, market_data_service=market_service)
+            analytics = AnalyticsService(
+                self.db,
+                market_data_service=market_service,
+                runtime_hmm_fit_enabled=self.runtime_hmm_fit_enabled,
+                max_regime_observations=self.max_regime_observations,
+                max_history_days=self.max_history_days,
+            )
             analytics.build_risk_payload(
                 user,
                 portfolio_id,

@@ -64,12 +64,14 @@ class PortfolioCsvImportService:
 
     def resolve_trades_csv(self, csv_text: str) -> dict[str, Any]:
         """Apply deterministic CSV repairs and return a freshly validated file."""
+        self._repair_change_count = 0
         raw = self._read_csv(csv_text)
         frame, _, column_mapping, _ = self._normalize_columns(raw)
         changes: list[dict[str, Any]] = []
 
         for original, normalized in column_mapping.items():
-            changes.append(
+            self._append_change(
+                changes,
                 self._change(None, normalized, original, normalized, "Mapped a recognized column name.")
             )
 
@@ -82,7 +84,8 @@ class PortfolioCsvImportService:
         for field, value in defaults.items():
             if field not in frame.columns:
                 frame[field] = value
-                changes.append(
+                self._append_change(
+                    changes,
                     self._change(None, field, None, value, f"Added the default {field} value.")
                 )
 
@@ -145,6 +148,7 @@ class PortfolioCsvImportService:
         return {
             "resolved_csv": resolved_csv,
             "changes": changes,
+            "changes_truncated": self._repair_change_count > len(changes),
             "report": report,
         }
 
@@ -270,6 +274,24 @@ class PortfolioCsvImportService:
 
         if not missing_columns:
             errors.extend(self._normalize_and_validate_rows(frame))
+            if len(frame) > self.max_trades_per_portfolio:
+                errors.append(
+                    {
+                        "message": (
+                            "CSV contains too many trade rows. "
+                            f"The maximum is {self.max_trades_per_portfolio}."
+                        )
+                    }
+                )
+            if frame["ticker"].nunique(dropna=True) > self.max_csv_tickers:
+                errors.append(
+                    {
+                        "message": (
+                            "CSV contains too many distinct ticker symbols. "
+                            f"The maximum is {self.max_csv_tickers}."
+                        )
+                    }
+                )
 
         duplicate_columns = [
             column
@@ -448,7 +470,16 @@ class PortfolioCsvImportService:
         if self._comparable_value(before) == self._comparable_value(after):
             return
         frame.at[index, field] = after
-        changes.append(self._change(row_number, field, before, after, reason))
+        self._append_change(changes, self._change(row_number, field, before, after, reason))
+
+    def _append_change(
+        self,
+        changes: list[dict[str, Any]],
+        change: dict[str, Any],
+    ) -> None:
+        self._repair_change_count += 1
+        if len(changes) < self.max_resolution_changes:
+            changes.append(change)
 
     @staticmethod
     def _repair_ticker(value: Any) -> Any:

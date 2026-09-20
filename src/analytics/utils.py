@@ -60,7 +60,12 @@ class AnalyticsUtils:
 
     @staticmethod
     def _safe_div(numerator: float, denominator: Optional[float]) -> Optional[float]:
-        if denominator is None or denominator == 0 or pd.isna(denominator):
+        if (
+            denominator is None
+            or not math.isfinite(float(denominator))
+            or abs(float(denominator)) < 1e-12
+            or not math.isfinite(float(numerator))
+        ):
             return None
         return float(numerator / denominator)
 

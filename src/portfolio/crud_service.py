@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.api.errors import AppError
 from src.database.models import Portfolio, User
@@ -25,6 +25,22 @@ class PortfolioCrudService:
         base_currency: str = "INR",
         benchmark: str = "NIFTY50",
     ) -> Portfolio:
+        portfolio_count = self.db.scalar(
+            select(func.count(Portfolio.id)).where(Portfolio.user_id == user.id)
+        ) or 0
+        maximum = (
+            self.max_portfolios_per_guest
+            if user.is_guest
+            else self.max_portfolios_per_user
+        )
+        if portfolio_count >= maximum:
+            raise AppError(
+                "Portfolio limit reached. Delete an existing portfolio before creating another.",
+                code="PORTFOLIO_LIMIT_REACHED",
+                status_code=409,
+                details={"maximum": maximum},
+            )
+
         portfolio = Portfolio(
             user_id=user.id,
             name=name.strip(),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -37,14 +37,31 @@ class MarketDataFetchService:
         cached = self.cache.get(cache_key)
         if cached is not None:
             logger.info("Market data cache hit for %s", cache_key)
+            self._record_fetch_metadata(
+                "historical",
+                cached,
+                source="cache",
+                fallback_used=False,
+                coverage_complete=self._stored_prices_cover_request(
+                    cached, normalized_tickers, start_date, end_date
+                ),
+            )
             return cached
 
         stored = self._get_stored_prices(normalized_tickers, start_date, end_date)
         if self._stored_prices_cover_request(stored, normalized_tickers, start_date, end_date):
             logger.info("Market data DB hit for historical prices: %s", normalized_tickers)
             self.cache.set(cache_key, stored, self.cache_ttl_seconds)
+            self._record_fetch_metadata(
+                "historical",
+                stored,
+                source="stored",
+                fallback_used=False,
+                coverage_complete=True,
+            )
             return stored
 
+        refresh_records: list[dict] = []
         try:
             refresh_records = self._fetch_missing_price_records(normalized_tickers, start_date, end_date, stored)
             if refresh_records:
@@ -61,12 +78,29 @@ class MarketDataFetchService:
             raise
         except Exception as exc:
             if stored:
-                logger.warning("Historical provider failed; serving stored prices. %s", exc)
-                self.cache.set(cache_key, stored, self.cache_ttl_seconds)
-                return stored
+                logger.warning("Historical provider failed and stored coverage is incomplete. %s", exc)
+                raise AppError(
+                    "Stored market data does not fully cover the requested range and the provider is unavailable.",
+                    code="MARKET_DATA_INCOMPLETE",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    details=self._coverage_details(stored, normalized_tickers),
+                ) from exc
             raise self._market_data_error("Unable to fetch historical prices.", exc) from exc
 
-        records = self._get_stored_prices(normalized_tickers, start_date, end_date)
+        if persist:
+            records = self._get_stored_prices(normalized_tickers, start_date, end_date)
+        else:
+            records_by_key = {
+                (record["ticker"], record["date"]): record for record in stored
+            }
+            for record in refresh_records:
+                records_by_key[(record["ticker"], record["date"])] = {
+                    **record,
+                    "source": self.provider.name,
+                }
+            records = sorted(
+                records_by_key.values(), key=lambda item: (item["ticker"], item["date"])
+            )
         if not records:
             raise AppError(
                 "No historical price data was returned for the requested tickers and date range.",
@@ -75,6 +109,16 @@ class MarketDataFetchService:
             )
 
         self.cache.set(cache_key, records, self.cache_ttl_seconds)
+        coverage_complete = self._stored_prices_cover_request(
+            records, normalized_tickers, start_date, end_date
+        )
+        self._record_fetch_metadata(
+            "historical",
+            records,
+            source=self.provider.name if refresh_records else "stored",
+            fallback_used=False,
+            coverage_complete=coverage_complete,
+        )
         return records
 
     def get_live_prices(
@@ -94,6 +138,13 @@ class MarketDataFetchService:
                 continue
             try:
                 record = self.provider.get_live_price(ticker, include_name=include_name)
+                as_of = self._to_date(record.get("as_of") or date.today())
+                record = {
+                    **record,
+                    "source": self.provider.name,
+                    "as_of": as_of,
+                    "is_stale": self._quote_is_stale(as_of),
+                }
                 self.cache.set(cache_key, record, self.cache_ttl_seconds)
                 records.append(record)
             except Exception as exc:
@@ -105,12 +156,22 @@ class MarketDataFetchService:
                             "ticker": ticker,
                             "price": fallback["close"],
                             "name": None,
+                            "source": f"stored:{fallback.get('data_source') or 'unknown'}",
+                            "as_of": fallback["date"],
+                            "is_stale": self._quote_is_stale(fallback["date"]),
                         }
                     )
                     continue
                 raise self._market_data_error(f"Unable to fetch live price for {ticker}.", exc) from exc
 
         return records
+
+    @staticmethod
+    def _quote_is_stale(as_of: date) -> bool:
+        latest_session = date.today()
+        while latest_session.weekday() >= 5:
+            latest_session -= timedelta(days=1)
+        return as_of < latest_session
 
     def get_india_vix(
         self,
@@ -132,28 +193,53 @@ class MarketDataFetchService:
         cached = self.cache.get(cache_key)
         if cached is not None:
             logger.info("Market data cache hit for %s", cache_key)
+            self._record_fetch_metadata(
+                "vix",
+                cached,
+                source="cache",
+                fallback_used=False,
+                coverage_complete=self._stored_vix_covers_request(
+                    cached, start_date, end_date
+                ),
+            )
             return cached
 
         stored = self._get_stored_vix(start_date, end_date, window)
         if self._stored_vix_covers_request(stored, start_date, end_date):
             self.cache.set(cache_key, stored, self.cache_ttl_seconds)
+            self._record_fetch_metadata(
+                "vix",
+                stored,
+                source="stored",
+                fallback_used=False,
+                coverage_complete=True,
+            )
             return stored
 
+        provider_records: list[dict] = []
         try:
             vix = self.provider.get_india_vix(start_date, end_date)
             vix = VIXDataFetcher.add_vix_change(vix, window=window)
-            records = self._normalize_vix_records(vix, window)
-            MarketDataValidator.validate_vix_records(records)
+            provider_records = self._normalize_vix_records(vix, window)
+            MarketDataValidator.validate_vix_records(provider_records)
             if persist:
-                self._upsert_vix(records)
+                self._upsert_vix(provider_records)
         except Exception as exc:
             if stored:
-                logger.warning("VIX provider failed; serving stored VIX data. %s", exc)
-                self.cache.set(cache_key, stored, self.cache_ttl_seconds)
-                return stored
+                logger.warning("VIX provider failed and stored coverage is incomplete. %s", exc)
+                raise AppError(
+                    "Stored India VIX data does not fully cover the requested range and the provider is unavailable.",
+                    code="MARKET_DATA_INCOMPLETE",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    details=self._coverage_details(stored, ["^INDIAVIX"]),
+                ) from exc
             raise self._market_data_error("Unable to fetch India VIX history.", exc) from exc
 
-        records = self._get_stored_vix(start_date, end_date, window)
+        records = (
+            self._get_stored_vix(start_date, end_date, window)
+            if persist
+            else provider_records
+        )
 
         if not records:
             raise AppError(
@@ -163,7 +249,45 @@ class MarketDataFetchService:
             )
 
         self.cache.set(cache_key, records, self.cache_ttl_seconds)
+        self._record_fetch_metadata(
+            "vix",
+            records,
+            source=self.provider.name,
+            fallback_used=False,
+            coverage_complete=self._stored_vix_covers_request(
+                records, start_date, end_date
+            ),
+        )
         return records
+
+    def _record_fetch_metadata(
+        self,
+        dataset: str,
+        records: list[dict],
+        *,
+        source: str,
+        fallback_used: bool,
+        coverage_complete: bool,
+    ) -> None:
+        dates = [self._to_date(record["date"]) for record in records if record.get("date")]
+        self.fetch_metadata[dataset] = {
+            "source": source,
+            "fallback_used": fallback_used,
+            "coverage_complete": coverage_complete,
+            "as_of": max(dates) if dates else None,
+        }
+
+    @staticmethod
+    def _coverage_details(records: list[dict], tickers: list[str]) -> dict:
+        available = {}
+        for ticker in tickers:
+            dates = [record["date"] for record in records if record.get("ticker") == ticker]
+            if dates:
+                available[ticker] = {
+                    "start_date": str(min(dates)),
+                    "end_date": str(max(dates)),
+                }
+        return {"available_ranges": available}
 
     def get_fii_dii_flows(
         self,

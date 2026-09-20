@@ -12,7 +12,12 @@ from src.database.models import MarketPrice, PortfolioReturn
 from src.market import MarketDataService
 
 
-def build_client(tmp_path, *, csv_upload_max_bytes: int = 5 * 1024 * 1024) -> TestClient:
+def build_client(
+    tmp_path,
+    *,
+    csv_upload_max_bytes: int = 5 * 1024 * 1024,
+    **settings_overrides,
+) -> TestClient:
     settings = Settings(
         environment="test",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
@@ -20,6 +25,7 @@ def build_client(tmp_path, *, csv_upload_max_bytes: int = 5 * 1024 * 1024) -> Te
         default_user_email="test@example.com",
         default_user_name="Test User",
         csv_upload_max_bytes=csv_upload_max_bytes,
+        **settings_overrides,
     )
 
     return TestClient(
@@ -662,3 +668,100 @@ def test_csv_upload_rejects_empty_invalid_encoding_and_oversized_files(tmp_path)
         )
         assert oversized.status_code == 413
         assert oversized.json()["error"]["code"] == "CSV_TOO_LARGE"
+
+
+def test_csv_preview_enforces_structural_resource_limits(tmp_path):
+    with build_client(
+        tmp_path,
+        csv_upload_max_rows=1,
+        csv_upload_max_columns=5,
+        csv_upload_max_field_characters=64,
+        csv_upload_max_cells=100,
+    ) as client:
+        authenticate(client)
+
+        too_many_rows = client.post(
+            "/api/v1/portfolio/upload/preview",
+            files={
+                "file": (
+                    "rows.csv",
+                    "ticker,quantity,transaction_date,price\nA.NS,1,2024-01-01,1\nB.NS,1,2024-01-01,1\n",
+                    "text/csv",
+                )
+            },
+        )
+        assert too_many_rows.status_code == 422
+        assert too_many_rows.json()["error"]["code"] == "CSV_TOO_MANY_ROWS"
+
+        too_many_columns = client.post(
+            "/api/v1/portfolio/upload/preview",
+            files={
+                "file": (
+                    "columns.csv",
+                    "ticker,quantity,transaction_date,price,fees,taxes\nA.NS,1,2024-01-01,1,0,0\n",
+                    "text/csv",
+                )
+            },
+        )
+        assert too_many_columns.status_code == 422
+        assert too_many_columns.json()["error"]["code"] == "CSV_TOO_MANY_COLUMNS"
+
+        long_field = client.post(
+            "/api/v1/portfolio/upload/preview",
+            files={
+                "file": (
+                    "field.csv",
+                    "ticker,quantity,transaction_date,price,notes\nA.NS,1,2024-01-01,1,"
+                    + "x" * 65
+                    + "\n",
+                    "text/csv",
+                )
+            },
+        )
+        assert long_field.status_code == 422
+        assert long_field.json()["error"]["code"] == "CSV_FIELD_TOO_LONG"
+
+
+def test_portfolio_and_manual_trade_limits_are_enforced(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        MarketDataService,
+        "get_historical_prices",
+        lambda self, tickers, start_date, end_date, persist=True: [],
+    )
+    with build_client(
+        tmp_path,
+        portfolio_max_per_user=1,
+        portfolio_max_trades=1,
+    ) as client:
+        authenticate(client)
+        portfolio = create_portfolio(client)
+
+        extra_portfolio = client.post(
+            "/api/v1/portfolio",
+            json={"name": "One too many"},
+        )
+        assert extra_portfolio.status_code == 409
+        assert extra_portfolio.json()["error"]["code"] == "PORTFOLIO_LIMIT_REACHED"
+
+        first_trade = client.post(
+            f"/api/v1/portfolio/{portfolio['id']}/trades",
+            json={
+                "ticker": "INFY.NS",
+                "quantity": 1,
+                "transaction_date": "2024-01-01",
+                "price": 100,
+            },
+        )
+        assert first_trade.status_code == 201
+
+        extra_trade = client.post(
+            f"/api/v1/portfolio/{portfolio['id']}/trades",
+            json={
+                "ticker": "TCS.NS",
+                "quantity": 1,
+                "transaction_date": "2024-01-02",
+                "price": 100,
+            },
+        )
+        assert extra_trade.status_code == 409
+        assert extra_trade.json()["error"]["code"] == "PORTFOLIO_TRADE_LIMIT_REACHED"

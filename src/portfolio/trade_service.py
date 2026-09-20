@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.api.errors import AppError
 from src.database.models import Trade, User
@@ -41,6 +41,16 @@ class PortfolioTradeService:
         notes: str | None = None,
     ) -> Trade:
         self.get_portfolio(user, portfolio_id)
+        trade_count = self.db.scalar(
+            select(func.count(Trade.id)).where(Trade.portfolio_id == portfolio_id)
+        ) or 0
+        if trade_count >= self.max_trades_per_portfolio:
+            raise AppError(
+                "Trade limit reached for this portfolio.",
+                code="PORTFOLIO_TRADE_LIMIT_REACHED",
+                status_code=409,
+                details={"maximum": self.max_trades_per_portfolio},
+            )
         trade = Trade(
             portfolio_id=portfolio_id,
             ticker=ticker.upper().strip(),

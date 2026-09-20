@@ -1,7 +1,9 @@
 from pathlib import Path
 import sys
+import math
 
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -131,12 +133,53 @@ def test_risk_analytics_returns_metrics_series_pnl_and_persists(tmp_path):
         assert payload["metrics"]["historical_var"] <= payload["metrics"]["daily_mean_return"]
         assert "drawdown" in payload["series"]
         assert "rolling_volatility" in payload["series"]
+        assert payload["metrics"]["total_return"] == pytest.approx(
+            payload["series"]["cumulative_returns"][-1]["cumulative_return"]
+        )
+        assert payload["metrics"]["max_drawdown"] == pytest.approx(
+            min(point["drawdown"] for point in payload["series"]["drawdown"])
+        )
+        assert payload["metrics"]["historical_cvar"] <= payload["metrics"]["historical_var"]
+        assert payload["metrics"]["parametric_cvar"] <= payload["metrics"]["parametric_var"]
+        assert all(
+            value is None or math.isfinite(value)
+            for value in payload["metrics"].values()
+        )
+
+        summary = client.get(f"/api/v1/portfolio/{portfolio_id}/summary").json()
+        assert payload["pnl"]["cost_basis"] == pytest.approx(summary["invested_value"])
+        assert payload["pnl"]["market_value"] == pytest.approx(summary["current_value"])
+        assert payload["pnl"]["unrealized_pnl"] == pytest.approx(summary["unrealized_pnl"])
+        assert payload["pnl"]["total_pnl"] == pytest.approx(summary["total_pnl"])
 
         db = client.app.state.session_factory()
         try:
             assert db.query(RiskMetric).count() == 1
         finally:
             db.close()
+
+
+def test_risk_analytics_clamps_history_to_the_first_trade(tmp_path):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio_with_trades(client)
+        seed_market_prices(client)
+
+        response = client.get(
+            f"/api/v1/analytics/portfolio/{portfolio_id}/risk",
+            params={
+                "start_date": "2023-01-01",
+                "end_date": "2024-02-14",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["returns"][0]["date"] >= "2024-01-02"
+
+        stored = client.get(f"/api/v1/portfolio/{portfolio_id}/returns").json()
+        assert stored
+        assert all(row["date"] >= "2024-01-01" for row in stored)
 
 
 def test_regime_analytics_returns_current_regime_history_and_persists(tmp_path, monkeypatch):
@@ -163,14 +206,18 @@ def test_regime_analytics_returns_current_regime_history_and_persists(tmp_path, 
         assert response.status_code == 200
         payload = response.json()
         assert payload["portfolio_id"] == portfolio_id
-        assert payload["current_regime"] in {"Bull", "Bear", "High Volatility"}
+        assert payload["current_regime"] in {"Bull", "Bear", "High Volatility", "Crisis"}
         assert 0 <= payload["regime_probability"] <= 1
         assert len(payload["regime_history"]) > 0
         assert len(payload["transition_matrix"]) == 3
         assert len(payload["regime_statistics"]) > 0
         assert len(payload["regime_duration"]) > 0
         assert payload["state_labels"]
-        assert payload["feature_metadata"]["model_name"] in {"hmm", "deterministic_fallback"}
+        assert payload["feature_metadata"]["model_name"] in {
+            "hmm",
+            "hmm_runtime",
+            "deterministic_fallback",
+        }
         assert isinstance(payload["feature_metadata"]["model_fallback_used"], bool)
 
         db = client.app.state.session_factory()
@@ -205,11 +252,15 @@ def test_regime_analytics_uses_price_only_features_when_external_signals_fail(tm
 
         assert response.status_code == 200
         payload = response.json()
-        assert payload["current_regime"] in {"Bull", "Bear", "High Volatility"}
+        assert payload["current_regime"] in {"Bull", "Bear", "High Volatility", "Crisis"}
         assert len(payload["regime_history"]) > 0
         assert len(payload["transition_matrix"]) == 3
         assert payload["feature_metadata"]["fallback_used"] is True
-        assert payload["feature_metadata"]["model_name"] in {"hmm", "deterministic_fallback"}
+        assert payload["feature_metadata"]["model_name"] in {
+            "hmm",
+            "hmm_runtime",
+            "deterministic_fallback",
+        }
         assert any(
             "India VIX unavailable" in warning
             for warning in payload["feature_metadata"]["warnings"]

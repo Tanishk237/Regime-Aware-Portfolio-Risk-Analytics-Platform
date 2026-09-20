@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from statistics import NormalDist
 
 import numpy as np
 import pandas as pd
@@ -11,12 +12,6 @@ from src.portfolio.portfolio_service import PortfolioService
 
 
 class AnalyticsRiskService:
-    PARAMETRIC_Z_SCORES = {
-        0.90: 1.2815515655446004,
-        0.95: 1.6448536269514722,
-        0.99: 2.3263478740408408,
-    }
-
     def _calculate_risk_metrics(
         self,
         returns: pd.Series,
@@ -24,6 +19,19 @@ class AnalyticsRiskService:
         confidence_level: float,
         risk_free_rate: float,
     ) -> dict:
+        if not 0 < confidence_level < 1:
+            raise AppError(
+                "confidence_level must be between 0 and 1.",
+                code="INVALID_CONFIDENCE_LEVEL",
+                status_code=422,
+            )
+        if not math.isfinite(risk_free_rate) or risk_free_rate <= -1:
+            raise AppError(
+                "risk_free_rate must be finite and greater than -1.",
+                code="INVALID_RISK_FREE_RATE",
+                status_code=422,
+            )
+
         clean = returns.dropna().astype(float)
         if len(clean) < 2:
             raise AppError(
@@ -32,20 +40,36 @@ class AnalyticsRiskService:
                 status_code=422,
             )
 
-        daily_rf = risk_free_rate / 252
+        if not np.isfinite(clean.to_numpy()).all():
+            raise AppError(
+                "Returns contain non-finite values.",
+                code="INVALID_RETURNS",
+                status_code=422,
+            )
+        if (clean <= -1).any():
+            raise AppError(
+                "Returns cannot be less than or equal to -100%.",
+                code="INVALID_RETURNS",
+                status_code=422,
+            )
+
+        daily_rf = (1 + risk_free_rate) ** (1 / 252) - 1
         std = float(clean.std())
         mean = float(clean.mean())
         historical_var = float(np.quantile(clean, 1 - confidence_level))
         historical_cvar = float(clean[clean <= historical_var].mean())
-        z_score = self.PARAMETRIC_Z_SCORES.get(round(confidence_level, 2), 1.6448536269514722)
+        z_score = NormalDist().inv_cdf(confidence_level)
         parametric_var = float(mean - z_score * std)
         parametric_cvar = float(mean - std * self._normal_pdf(z_score) / (1 - confidence_level))
         excess = clean - daily_rf
         sharpe = self._safe_div(float(excess.mean() * math.sqrt(252)), std)
-        downside_std = float(excess[excess < 0].std())
-        sortino = self._safe_div(float(excess.mean() * math.sqrt(252)), downside_std)
+        downside_deviation = float(np.sqrt(np.mean(np.minimum(excess.to_numpy(), 0.0) ** 2)))
+        sortino = self._safe_div(
+            float(excess.mean() * math.sqrt(252)),
+            downside_deviation,
+        )
         cumulative = (1 + clean).cumprod()
-        drawdown = cumulative / cumulative.cummax() - 1
+        drawdown = self._drawdown_series(cumulative)
         max_drawdown = float(drawdown.min())
         annualized_volatility = float(std * math.sqrt(252))
         total_return = float(cumulative.iloc[-1] - 1)
@@ -70,10 +94,11 @@ class AnalyticsRiskService:
         }
 
     def _build_risk_series(self, returns: pd.Series, *, rolling_window: int) -> dict:
-        cumulative = (1 + returns).cumprod()
-        drawdown = cumulative / cumulative.cummax() - 1
-        rolling_returns = returns.rolling(rolling_window).apply(lambda values: (1 + values).prod() - 1)
-        rolling_volatility = returns.rolling(rolling_window).std() * math.sqrt(252)
+        clean = returns.dropna().astype(float)
+        cumulative = (1 + clean).cumprod()
+        drawdown = self._drawdown_series(cumulative)
+        rolling_returns = clean.rolling(rolling_window).apply(lambda values: (1 + values).prod() - 1)
+        rolling_volatility = clean.rolling(rolling_window).std() * math.sqrt(252)
 
         return {
             "cumulative_returns": self._series_to_records(cumulative - 1, "cumulative_return"),
@@ -82,12 +107,21 @@ class AnalyticsRiskService:
             "rolling_volatility": self._series_to_records(rolling_volatility.dropna(), "rolling_volatility"),
         }
 
+    @staticmethod
+    def _drawdown_series(cumulative_wealth: pd.Series) -> pd.Series:
+        # Starting capital is always a peak, so an immediate loss is a drawdown.
+        running_peak = cumulative_wealth.cummax().clip(lower=1.0)
+        return cumulative_wealth / running_peak - 1
+
     def _build_pnl(self, user: User, portfolio_id: int) -> dict:
-        positions = PortfolioService(self.db).list_positions(user, portfolio_id)
+        positions = PortfolioService(
+            self.db,
+            market_data_service=self.market_data_service,
+        ).list_positions(user, portfolio_id)
         total_cost_basis = float(sum(position.cost_basis for position in positions))
         realized_pnl = float(sum(position.realized_pnl for position in positions))
         position_rows = []
-        market_value = 0.0
+        open_market_values = []
 
         for position in positions:
             latest_price = self._latest_close(position.ticker)
@@ -102,8 +136,8 @@ class AnalyticsRiskService:
                 if position_market_value is not None
                 else float(position.unrealized_pnl)
             )
-            if position_market_value is not None:
-                market_value += position_market_value
+            if position.quantity > 0:
+                open_market_values.append(position_market_value)
             position_rows.append(
                 {
                     "ticker": position.ticker,
@@ -118,11 +152,30 @@ class AnalyticsRiskService:
                 }
             )
 
+        all_open_positions_valued = bool(open_market_values) and all(
+            value is not None for value in open_market_values
+        )
+        market_value = (
+            float(sum(value for value in open_market_values if value is not None))
+            if all_open_positions_valued
+            else None
+        )
+        unrealized_pnl = (
+            market_value - total_cost_basis
+            if market_value is not None
+            else None
+        )
+        total_pnl = (
+            unrealized_pnl + realized_pnl
+            if unrealized_pnl is not None
+            else realized_pnl if not open_market_values else None
+        )
+
         return {
             "cost_basis": total_cost_basis,
-            "market_value": market_value if position_rows else None,
+            "market_value": market_value,
             "realized_pnl": realized_pnl,
-            "unrealized_pnl": market_value - total_cost_basis if position_rows else None,
-            "total_pnl": market_value - total_cost_basis + realized_pnl if position_rows else realized_pnl,
+            "unrealized_pnl": unrealized_pnl,
+            "total_pnl": total_pnl,
             "positions": position_rows,
         }

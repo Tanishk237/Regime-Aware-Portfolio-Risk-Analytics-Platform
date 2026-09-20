@@ -100,6 +100,16 @@ class RegimeDuration(BaseModel):
     duration_days: int
 
 
+class RegimeExplanation(BaseModel):
+    summary: str
+    drivers: list[str]
+    current_duration_days: int
+    likely_next_state: Optional[str] = None
+    likely_next_probability: Optional[float] = None
+    model_mode: str
+    probability_note: str
+
+
 class RegimeAnalyticsResponse(BaseModel):
     success: bool = True
     portfolio_id: int
@@ -113,3 +123,4 @@ class RegimeAnalyticsResponse(BaseModel):
     regime_duration: list[RegimeDuration]
     state_labels: dict[str, str]
     feature_metadata: dict[str, Any]
+    explanation: RegimeExplanation

@@ -27,10 +27,26 @@ class AnalyticsService(
         *,
         market_data_service: Optional[MarketDataService] = None,
         model_dir: str = "models",
+        runtime_hmm_fit_enabled: bool = True,
+        max_regime_observations: int = 1_500,
+        max_history_days: int = 3_650,
     ):
         self.db = db
         self.market_data_service = market_data_service or MarketDataService(db)
         self.model_dir = model_dir
+        self.runtime_hmm_fit_enabled = runtime_hmm_fit_enabled
+        self.max_regime_observations = max_regime_observations
+        self.max_history_days = max_history_days
+
+    def _validate_work_window(self, start_date: date, end_date: Optional[date]) -> None:
+        final_date = end_date or date.today()
+        if (final_date - start_date).days > self.max_history_days:
+            raise AppError(
+                "The requested analytics window is too large.",
+                code="ANALYTICS_WINDOW_TOO_LARGE",
+                status_code=422,
+                details={"maximum_days": self.max_history_days},
+            )
 
     def build_risk_payload(
         self,
@@ -44,9 +60,16 @@ class AnalyticsService(
         rolling_window: int = 20,
         persist: bool = True,
     ) -> dict:
-        portfolio = PortfolioService(self.db).get_portfolio(user, portfolio_id)
-        start_date = start_date or self._portfolio_first_trade_date(portfolio.id)
+        portfolio_service = PortfolioService(
+            self.db,
+            market_data_service=self.market_data_service,
+        )
+        portfolio = portfolio_service.get_portfolio(user, portfolio_id)
+        self.market_data_service.allow_demo_data = portfolio.is_demo
+        first_trade_date = self._portfolio_first_trade_date(portfolio.id)
+        start_date = max(start_date or first_trade_date, first_trade_date)
         self._validate_date_range(start_date, end_date)
+        self._validate_work_window(start_date, end_date)
         returns = self.get_or_build_returns(
             user,
             portfolio,
@@ -92,10 +115,17 @@ class AnalyticsService(
         weights: Optional[list[float]] = None,
         persist: bool = True,
     ) -> dict:
-        portfolio = PortfolioService(self.db).get_portfolio(user, portfolio_id)
-        start_date = start_date or self._portfolio_first_trade_date(portfolio.id)
+        portfolio_service = PortfolioService(
+            self.db,
+            market_data_service=self.market_data_service,
+        )
+        portfolio = portfolio_service.get_portfolio(user, portfolio_id)
+        self.market_data_service.allow_demo_data = portfolio.is_demo
+        first_trade_date = self._portfolio_first_trade_date(portfolio.id)
+        start_date = max(start_date or first_trade_date, first_trade_date)
         self._validate_date_range(start_date, end_date)
-        positions = PortfolioService(self.db).list_positions(user, portfolio.id)
+        self._validate_work_window(start_date, end_date)
+        positions = portfolio_service.list_positions(user, portfolio.id)
         tickers = [position.ticker for position in positions if position.quantity > 0]
         if not tickers:
             raise AppError(
@@ -115,6 +145,7 @@ class AnalyticsService(
             persist=persist,
         )
         feature_matrix = self._feature_records_to_frame(feature_payload["records"])
+        feature_matrix = feature_matrix.tail(self.max_regime_observations)
         regime_payload = self._predict_regimes(feature_matrix)
 
         if persist:
@@ -126,6 +157,7 @@ class AnalyticsService(
         feature_metadata["fallback_used"] = bool(
             feature_metadata.get("fallback_used") or regime_payload["model_fallback_used"]
         )
+        explanation = self._build_regime_explanation(regime_payload)
 
         return {
             "portfolio_id": portfolio.id,
@@ -139,6 +171,61 @@ class AnalyticsService(
             "regime_duration": regime_payload["duration"],
             "state_labels": regime_payload["state_labels"],
             "feature_metadata": feature_metadata,
+            "explanation": explanation,
+        }
+
+    @staticmethod
+    def _build_regime_explanation(regime_payload: dict) -> dict:
+        current_state = int(regime_payload["current_state"])
+        current_label = str(regime_payload["current_regime"])
+        statistics = next(
+            (
+                row
+                for row in regime_payload["statistics"]
+                if int(row["hidden_state"]) == current_state
+            ),
+            {},
+        )
+        durations = regime_payload["duration"]
+        current_duration = int(durations[-1]["duration_days"]) if durations else 0
+        drivers = []
+        for key, label, percent in (
+            ("average_return", "Average daily return", True),
+            ("average_volatility", "Average 20-day volatility", True),
+            ("average_drawdown", "Average drawdown", True),
+            ("average_vix", "Average India VIX", False),
+        ):
+            value = statistics.get(key)
+            if value is None:
+                continue
+            rendered = f"{float(value) * 100:.2f}%" if percent else f"{float(value):.2f}"
+            drivers.append(f"{label}: {rendered}")
+
+        transition_rows = regime_payload.get("transition_matrix") or []
+        state_labels = regime_payload.get("state_labels") or {}
+        likely_state = None
+        likely_probability = None
+        if current_state < len(transition_rows) and transition_rows[current_state]:
+            transition_row = transition_rows[current_state]
+            likely_state_id = max(range(len(transition_row)), key=transition_row.__getitem__)
+            likely_state = state_labels.get(str(likely_state_id), f"State {likely_state_id}")
+            likely_probability = float(transition_row[likely_state_id])
+
+        probability = float(regime_payload["regime_probability"])
+        return {
+            "summary": (
+                f"The latest validated feature observation is most consistent with the "
+                f"{current_label} state at {probability * 100:.1f}% state-fit probability."
+            ),
+            "drivers": drivers,
+            "current_duration_days": current_duration,
+            "likely_next_state": likely_state,
+            "likely_next_probability": likely_probability,
+            "model_mode": str(regime_payload["model_name"]),
+            "probability_note": (
+                "This probability measures how well the latest observation fits the hidden "
+                "state. It is not forecast accuracy or a probability of a future market outcome."
+            ),
         }
 
     def get_or_build_returns(
@@ -150,11 +237,11 @@ class AnalyticsService(
         end_date: Optional[date],
         persist: bool,
     ) -> pd.Series:
-        stored = self._load_stored_returns(portfolio.id, start_date, end_date)
-        if not stored.empty:
-            return stored
-
-        positions = PortfolioService(self.db).list_positions(user, portfolio.id)
+        self.include_demo_market_data = portfolio.is_demo
+        positions = PortfolioService(
+            self.db,
+            market_data_service=self.market_data_service,
+        ).list_positions(user, portfolio.id)
         open_positions = [position for position in positions if position.quantity > 0]
         if not open_positions:
             raise AppError(

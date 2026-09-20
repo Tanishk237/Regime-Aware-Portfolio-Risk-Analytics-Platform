@@ -105,6 +105,7 @@ class YahooFinanceProvider(MarketDataProvider):
                 "ticker": ticker,
                 "price": float(history["Close"].iloc[-1]),
                 "name": None,
+                "as_of": history.index[-1].date(),
             }
             if include_name:
                 payload["name"] = data.info.get("longName", "Unknown")
@@ -241,6 +242,7 @@ class DeterministicTestProvider(MarketDataProvider):
             "ticker": ticker,
             "price": float(history["Close"].iloc[-1]),
             "name": f"{ticker} test fixture" if include_name else None,
+            "as_of": history.index[-1].date(),
         }
 
     def get_india_vix(

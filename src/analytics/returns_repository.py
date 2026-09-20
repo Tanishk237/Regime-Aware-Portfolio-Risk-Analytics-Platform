@@ -4,9 +4,9 @@ from datetime import date
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import delete
-
-from src.database.models import MarketPrice, PortfolioReturn, RegimePrediction, RiskMetric
+from sqlalchemy import delete, func, select
+from src.database.upsert import upsert_rows
+from src.database.models import MarketPrice, PortfolioReturn, RegimePrediction, RiskMetric, Trade
 
 
 class AnalyticsReturnsRepository:
@@ -36,34 +36,30 @@ class AnalyticsReturnsRepository:
         )
 
     def _persist_returns(self, portfolio_id: int, returns: pd.Series) -> None:
+        self._remove_pretrade_snapshots(PortfolioReturn, portfolio_id)
         cumulative = (1 + returns).cumprod() - 1
+        rows = []
         for row_date, value in returns.items():
-            row_day = self._to_date(row_date)
-            existing = (
-                self.db.query(PortfolioReturn)
-                .filter(PortfolioReturn.portfolio_id == portfolio_id, PortfolioReturn.date == row_day)
-                .one_or_none()
-            )
-            payload = {
+            rows.append({
+                "portfolio_id": portfolio_id,
+                "date": self._to_date(row_date),
                 "daily_return": float(value),
                 "cumulative_return": float(cumulative.loc[row_date]),
                 "portfolio_value": float(1 + cumulative.loc[row_date]),
-            }
-            if existing is None:
-                self.db.add(PortfolioReturn(portfolio_id=portfolio_id, date=row_day, **payload))
-            else:
-                for key, item in payload.items():
-                    setattr(existing, key, item)
-        self.db.commit()
+            })
+        upsert_rows(
+            self.db,
+            PortfolioReturn,
+            rows,
+            conflict_columns=("portfolio_id", "date"),
+            update_columns=("daily_return", "cumulative_return", "portfolio_value"),
+        )
 
     def _persist_latest_risk_metric(self, portfolio_id: int, returns: pd.Series, metrics: dict) -> None:
         metric_date = self._to_date(returns.index.max())
-        existing = (
-            self.db.query(RiskMetric)
-            .filter(RiskMetric.portfolio_id == portfolio_id, RiskMetric.date == metric_date)
-            .one_or_none()
-        )
         payload = {
+            "portfolio_id": portfolio_id,
+            "date": metric_date,
             "historical_var": metrics["historical_var"],
             "parametric_var": metrics["parametric_var"],
             "historical_cvar": metrics["historical_cvar"],
@@ -74,34 +70,52 @@ class AnalyticsReturnsRepository:
             "volatility": metrics["annualized_volatility"],
             "health_score": self._health_score(metrics),
         }
-        if existing is None:
-            self.db.add(RiskMetric(portfolio_id=portfolio_id, date=metric_date, **payload))
-        else:
-            for key, value in payload.items():
-                setattr(existing, key, value)
-        self.db.commit()
+        upsert_rows(
+            self.db,
+            RiskMetric,
+            [payload],
+            conflict_columns=("portfolio_id", "date"),
+            update_columns=tuple(
+                key for key in payload if key not in {"portfolio_id", "date"}
+            ),
+        )
 
     def _persist_regime_predictions(self, portfolio_id: int, history: list[dict]) -> None:
         if not history:
             return
-        dates = [record["date"] for record in history]
-        self.db.execute(
-            delete(RegimePrediction).where(
-                RegimePrediction.portfolio_id == portfolio_id,
-                RegimePrediction.date.in_(dates),
+        self._remove_pretrade_snapshots(RegimePrediction, portfolio_id)
+        rows = [
+            {
+                "portfolio_id": portfolio_id,
+                "date": record["date"],
+                "hidden_state": record["hidden_state"],
+                "regime_label": record["regime_label"],
+                "probability": record["probability"],
+            }
+            for record in history
+        ]
+        upsert_rows(
+            self.db,
+            RegimePrediction,
+            rows,
+            conflict_columns=("portfolio_id", "date"),
+            update_columns=("hidden_state", "regime_label", "probability"),
+        )
+
+    def _remove_pretrade_snapshots(self, model: type, portfolio_id: int) -> None:
+        first_trade_date = self.db.scalar(
+            select(func.min(Trade.transaction_date)).where(
+                Trade.portfolio_id == portfolio_id
             )
         )
-        for record in history:
-            self.db.add(
-                RegimePrediction(
-                    portfolio_id=portfolio_id,
-                    date=record["date"],
-                    hidden_state=record["hidden_state"],
-                    regime_label=record["regime_label"],
-                    probability=record["probability"],
-                )
+        if first_trade_date is None:
+            return
+        self.db.execute(
+            delete(model).where(
+                model.portfolio_id == portfolio_id,
+                model.date <= first_trade_date,
             )
-        self.db.commit()
+        )
 
     def _load_price_frame(self, tickers: list[str], start_date: date, end_date: Optional[date]) -> pd.DataFrame:
         query = (
@@ -109,6 +123,8 @@ class AnalyticsReturnsRepository:
             .filter(MarketPrice.ticker.in_(tickers), MarketPrice.date >= start_date)
             .order_by(MarketPrice.date)
         )
+        if not getattr(self, "include_demo_market_data", False):
+            query = query.filter(MarketPrice.data_source != "demo")
         if end_date is not None:
             query = query.filter(MarketPrice.date <= end_date)
         rows = query.all()
@@ -125,6 +141,8 @@ class AnalyticsReturnsRepository:
             self.db.query(MarketPrice)
             .filter(MarketPrice.ticker == ticker)
             .order_by(MarketPrice.date.desc())
-            .first()
         )
+        if not getattr(self, "include_demo_market_data", False):
+            row = row.filter(MarketPrice.data_source != "demo")
+        row = row.first()
         return float(row.close) if row is not None else None
