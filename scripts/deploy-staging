@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${STAGING_ENV_FILE:-${ROOT_DIR}/.env.staging}"
+COMPOSE_FILE="${ROOT_DIR}/compose.staging.yaml"
+export STAGING_ENV_FILE="${ENV_FILE}"
+
+if ! command -v docker >/dev/null 2>&1; then
+	echo "Docker with Compose is required to deploy the staging stack."
+	exit 1
+fi
+if ! command -v curl >/dev/null 2>&1; then
+	echo "curl is required to verify staging readiness."
+	exit 1
+fi
+if [[ ! -f "${ENV_FILE}" ]]; then
+	echo "Missing ${ENV_FILE}. Copy .env.staging.example and replace every placeholder first."
+	exit 1
+fi
+if grep -Eq 'example\.com|replace-with|postgresql\+psycopg://user:password@' "${ENV_FILE}"; then
+	echo "Staging configuration still contains example hosts or placeholder secrets."
+	exit 1
+fi
+
+COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
+
+echo "Validating staging configuration..."
+"${COMPOSE[@]}" config --quiet
+
+echo "Building staging images..."
+"${COMPOSE[@]}" build api web
+
+echo "Applying PostgreSQL migrations..."
+"${COMPOSE[@]}" run --rm --no-deps api alembic upgrade head
+
+echo "Starting staging services..."
+"${COMPOSE[@]}" up -d --no-build api web
+
+READY_URL="$(awk -F= '/^STAGING_READY_URL=/{sub(/^STAGING_READY_URL=/, ""); print; exit}' "${ENV_FILE}")"
+READY_URL="${READY_URL:-http://127.0.0.1:8000/api/v1/ready}"
+
+echo "Waiting for ${READY_URL}..."
+for _ in {1..30}; do
+	if curl --fail --silent --show-error "${READY_URL}" >/dev/null 2>&1; then
+		echo "Staging is ready."
+		"${COMPOSE[@]}" ps
+		exit 0
+	fi
+	sleep 2
+done
+
+echo "Staging did not become ready. Recent API logs:"
+"${COMPOSE[@]}" logs --tail=100 api
+exit 1

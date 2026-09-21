@@ -44,7 +44,8 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(
         settings.log_level,
-        json_logs=settings.log_json or settings.environment.lower() == "production",
+        json_logs=settings.log_json
+        or settings.environment.lower() in {"staging", "production"},
     )
     configure_sentry(
         settings.sentry_dsn,
@@ -73,7 +74,7 @@ def create_app(
                 init_database(db_engine)
             else:
                 run_migrations(
-                    settings.database_url,
+                    settings.effective_migration_database_url,
                     ssl_mode=settings.database_ssl_mode,
                 )
         if settings.create_db_on_startup:
@@ -202,7 +203,7 @@ def create_app(
             response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
             if request.url.path.startswith(settings.api_prefix):
                 response.headers.setdefault("Cache-Control", "no-store")
-            if settings.environment.lower() == "production":
+            if settings.environment.lower() in {"staging", "production"}:
                 response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
                 response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
             log_method = logger.warning if duration_ms >= settings.slow_request_threshold_ms else logger.info

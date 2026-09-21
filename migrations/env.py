@@ -20,7 +20,7 @@ def get_database_url() -> str:
     if configured_url:
         return configured_url
 
-    return get_settings().database_url
+    return get_settings().effective_migration_database_url
 
 
 def run_migrations_offline() -> None:

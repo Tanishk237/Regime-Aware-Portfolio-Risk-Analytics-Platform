@@ -2,9 +2,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import text
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -139,6 +141,7 @@ def test_deployment_lists_accept_json_or_comma_separated_values():
         cors_origins='["https://latent.example"]',
         trusted_hosts='["latent.example"]',
         nvidia_fallback_models='["model-a", "model-b"]',
+        market_data_refresh_symbols="",
     )
     comma_settings = Settings(
         environment="test",
@@ -149,11 +152,103 @@ def test_deployment_lists_accept_json_or_comma_separated_values():
     assert json_settings.cors_origins == ["https://latent.example"]
     assert json_settings.trusted_hosts == ["latent.example"]
     assert json_settings.nvidia_fallback_models == ["model-a", "model-b"]
+    assert json_settings.market_data_refresh_symbols == []
     assert comma_settings.cors_origins == [
         "https://one.example",
         "https://two.example",
     ]
     assert comma_settings.trusted_hosts == ["one.example", "two.example"]
+
+
+def test_staging_rejects_unsafe_deployment_defaults():
+    with pytest.raises(ValidationError, match="AUTH_SECRET_KEY must be changed in staging"):
+        Settings(
+            environment="staging",
+            database_url="sqlite:///./data/staging.db",
+        )
+
+
+def test_staging_accepts_hardened_postgresql_configuration():
+    settings = Settings(
+        environment="staging",
+        database_url="postgresql+psycopg://latent:secret@db.example.com:5432/latent",
+        database_ssl_mode="verify-full",
+        auth_secret_key="staging-secret-with-at-least-32-characters",
+        auth_cookie_secure=True,
+        cors_origins=["https://app.staging.example.com"],
+        trusted_hosts=["api.staging.example.com"],
+        regime_runtime_fit_enabled=False,
+    )
+
+    assert settings.environment == "staging"
+    assert settings.database_url.startswith("postgresql")
+
+
+def test_staging_accepts_neon_tls_channel_binding():
+    settings = Settings(
+        environment="staging",
+        database_url=(
+            "postgresql+psycopg://latent:secret@db.example.com:5432/latent"
+            "?sslmode=require&channel_binding=require"
+        ),
+        database_ssl_mode="require",
+        auth_secret_key="staging-secret-with-at-least-32-characters",
+        auth_cookie_secure=True,
+        cors_origins=["https://app.staging.example.com"],
+        trusted_hosts=["api.staging.example.com"],
+        regime_runtime_fit_enabled=False,
+    )
+
+    assert settings.database_ssl_mode == "require"
+
+
+def test_migration_url_defaults_to_runtime_database_url():
+    settings = Settings(
+        environment="test",
+        database_url="sqlite:///./data/test.db",
+    )
+
+    assert settings.effective_migration_database_url == settings.database_url
+
+
+def test_staging_can_use_direct_migration_url_with_pooled_runtime_url():
+    settings = Settings(
+        environment="staging",
+        database_url=(
+            "postgresql+psycopg://latent:secret@db-pooler.example.com:5432/latent"
+            "?sslmode=require&channel_binding=require"
+        ),
+        migration_database_url=(
+            "postgresql+psycopg://latent:secret@db.example.com:5432/latent"
+            "?sslmode=require&channel_binding=require"
+        ),
+        database_ssl_mode="require",
+        auth_secret_key="staging-secret-with-at-least-32-characters",
+        auth_cookie_secure=True,
+        cors_origins=["https://app.staging.example.com"],
+        trusted_hosts=["api.staging.example.com"],
+        regime_runtime_fit_enabled=False,
+    )
+
+    assert "-pooler" in settings.database_url
+    assert "-pooler" not in settings.effective_migration_database_url
+
+
+def test_staging_rejects_tls_without_verification_or_channel_binding():
+    with pytest.raises(ValidationError, match="channel_binding=require"):
+        Settings(
+            environment="staging",
+            database_url=(
+                "postgresql+psycopg://latent:secret@db.example.com:5432/latent"
+                "?sslmode=require"
+            ),
+            database_ssl_mode="require",
+            auth_secret_key="staging-secret-with-at-least-32-characters",
+            auth_cookie_secure=True,
+            cors_origins=["https://app.staging.example.com"],
+            trusted_hosts=["api.staging.example.com"],
+            regime_runtime_fit_enabled=False,
+        )
 
 
 def test_large_responses_are_compressed_and_timed():

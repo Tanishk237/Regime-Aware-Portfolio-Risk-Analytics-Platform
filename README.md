@@ -526,6 +526,53 @@ Do not rely on `RUN_MIGRATIONS_ON_STARTUP=true` when multiple API replicas can s
 It is enabled in local Compose for convenience; production should use one explicit migration
 job and leave it `false` on web replicas.
 
+### Staging With Managed PostgreSQL
+
+Staging uses the same hardened settings as production and a dedicated managed PostgreSQL
+database. It does not share a database, cookie name, or secret with local development or
+production.
+
+Neon connection strings use `sslmode=require&channel_binding=require`. Latent accepts this
+combination as a secure deployment transport while continuing to support `verify-full` for
+providers configured with a trusted root certificate.
+
+Use Neon's pooled hostname for `DATABASE_URL` and its direct hostname for
+`MIGRATION_DATABASE_URL`. API requests benefit from the pooler, while schema migrations run
+over a stable direct session. Other PostgreSQL providers may leave `MIGRATION_DATABASE_URL`
+blank to reuse `DATABASE_URL`.
+
+1. Provision an empty PostgreSQL database with TLS and point a staging DNS name at the host
+   or reverse proxy that will run the containers.
+2. Create the private staging configuration:
+
+```bash
+cp .env.staging.example .env.staging
+openssl rand -hex 32
+```
+
+3. Replace the database URL, generated auth secret, frontend/API origins, trusted hosts,
+   and optional provider credentials in `.env.staging`.
+4. Put HTTPS in front of ports 3000 and 8000. The staging Compose file binds both ports to
+   loopback so they are not exposed directly to the internet.
+5. Deploy from the repository root:
+
+```bash
+./scripts/deploy-staging
+```
+
+The deploy command rejects placeholder settings, validates Compose, builds both images,
+runs `alembic upgrade head` as a one-off job, starts API and web, and waits for
+`/api/v1/ready`. A failed migration or readiness check fails the deployment instead of
+silently serving an incompatible schema.
+
+Useful staging operations:
+
+```bash
+docker compose --env-file .env.staging -f compose.staging.yaml ps
+docker compose --env-file .env.staging -f compose.staging.yaml logs -f api web
+docker compose --env-file .env.staging -f compose.staging.yaml down
+```
+
 ### Backup And Recovery
 
 Create a private custom-format backup:

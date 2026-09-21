@@ -16,6 +16,14 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        op.alter_column(
+            "alembic_version",
+            "version_num",
+            existing_type=sa.String(length=32),
+            type_=sa.String(length=128),
+            existing_nullable=False,
+        )
     op.add_column(
         "market_prices",
         sa.Column("data_source", sa.String(length=32), nullable=False, server_default="provider"),
