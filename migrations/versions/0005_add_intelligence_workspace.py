@@ -25,7 +25,7 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("expected_impact", sa.Text(), nullable=True))
         batch_op.add_column(sa.Column("confidence", sa.Float(), nullable=True))
         batch_op.add_column(
-            sa.Column("is_read", sa.Boolean(), server_default=sa.text("0"), nullable=False)
+            sa.Column("is_read", sa.Boolean(), server_default=sa.false(), nullable=False)
         )
         batch_op.add_column(sa.Column("read_at", sa.DateTime(timezone=True), nullable=True))
         batch_op.create_unique_constraint(
@@ -63,7 +63,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("evidence", sa.Text(), nullable=True),
         sa.Column(
-            "is_read", sa.Boolean(), server_default=sa.text("0"), nullable=False
+            "is_read", sa.Boolean(), server_default=sa.false(), nullable=False
         ),
         sa.Column("detected_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("read_at", sa.DateTime(timezone=True), nullable=True),
