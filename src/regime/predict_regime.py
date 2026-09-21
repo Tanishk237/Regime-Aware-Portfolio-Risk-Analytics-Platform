@@ -15,6 +15,7 @@ class RegimePredictor:
         self.model_utils = ModelUtils(model_dir=model_dir)
         self.model = None
         self.scaler = None
+        self.metadata = {}
         self.state_labels = {}
         self._load_artifacts()
 
@@ -22,6 +23,7 @@ class RegimePredictor:
         artifacts = self.model_utils.load_training_artifacts()
         self.model = artifacts.get("model")
         self.scaler = artifacts.get("scaler")
+        self.metadata = artifacts.get("metadata", {})
         raw_state_labels = artifacts.get("state_labels", {})
         self.state_labels = {int(key): value for key, value in raw_state_labels.items()}
 
@@ -41,6 +43,8 @@ class RegimePredictor:
         return feature_matrix.copy()
 
     def _scale_features(self, feature_matrix: pd.DataFrame) -> pd.DataFrame:
+        if self.metadata.get("feature_names") != list(feature_matrix.columns):
+            raise ValueError("Feature columns do not match the trained HMM artifacts")
         scaled_values = self.scaler.transform(feature_matrix.values)
         return pd.DataFrame(
             scaled_values,

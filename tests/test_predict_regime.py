@@ -4,10 +4,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.regime.predict_regime import RegimePredictor
+from src.regime.model_utils import ModelArtifactError, ModelUtils
 from src.regime.train_hmm import HMMConfig, HMMTrainer
 
 
@@ -50,6 +52,19 @@ def test_regime_prediction_pipeline(tmp_path):
     assert len(payload["state_sequence"]) == len(feature_matrix)
     assert payload["current_state"] in payload["prediction_dataframe"]["state"].tolist()
     assert payload["transition_matrix"].shape[0] == payload["transition_matrix"].shape[1]
+
+
+def test_legacy_artifacts_are_rejected_before_unpickling(tmp_path, monkeypatch):
+    model_utils = ModelUtils(str(tmp_path / "legacy-model"))
+    model_utils.save_json({"n_states": 4}, "training_metadata.json")
+    monkeypatch.setattr(
+        model_utils,
+        "load_pickle",
+        lambda _filename: pytest.fail("incompatible pickle should not be loaded"),
+    )
+
+    with pytest.raises(ModelArtifactError):
+        model_utils.load_training_artifacts()
 
 
 if __name__ == "__main__":

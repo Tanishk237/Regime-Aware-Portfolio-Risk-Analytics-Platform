@@ -31,6 +31,8 @@ import typing as t
 
 import numpy as np
 import pandas as pd
+import hmmlearn
+import sklearn
 
 try:
     from sklearn.preprocessing import StandardScaler
@@ -93,7 +95,7 @@ except Exception:  # pragma: no cover - fallback for minimal environments
                 probabilities[idx, label] = 1.0
             return probabilities
 
-from src.regime.model_utils import ModelUtils
+from src.regime.model_utils import ARTIFACT_SCHEMA_VERSION, ModelUtils
 
 
 # -----------------------------
@@ -176,12 +178,18 @@ class HMMTrainer:
     def _build_metadata(self, scaled_features: pd.DataFrame, states: np.ndarray) -> dict:
         model = self.model
         metadata: dict = {
+            "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
             "n_samples": int(scaled_features.shape[0]),
             "n_features": int(scaled_features.shape[1]),
+            "feature_names": list(scaled_features.columns),
             "n_states": int(self.config.n_states),
             "covariance_type": self.config.covariance_type,
             "trained_at": datetime.utcnow().isoformat() + "Z",
             "state_counts": dict(pd.Series(states).value_counts().sort_index().to_dict()),
+            "library_versions": {
+                "scikit_learn": sklearn.__version__,
+                "hmmlearn": hmmlearn.__version__,
+            },
         }
 
         # capture means and, if available, covars in JSON-serializable form

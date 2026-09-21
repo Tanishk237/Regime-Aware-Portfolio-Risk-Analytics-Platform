@@ -28,7 +28,7 @@ class StateLabeller:
 
         return_threshold = summary_df["average_return"].quantile(0.5)
         volatility_threshold = summary_df["average_volatility"].quantile(0.75)
-        drawdown_threshold = summary_df["average_drawdown"].quantile(0.75)
+        drawdown_threshold = summary_df["average_drawdown"].quantile(0.25)
         vix_threshold = summary_df["average_vix"].quantile(0.75)
 
         for _, row in summary_df.iterrows():
@@ -38,7 +38,7 @@ class StateLabeller:
             avg_drawdown = float(row["average_drawdown"])
             avg_vix = float(row["average_vix"])
 
-            if avg_drawdown >= drawdown_threshold and avg_return <= return_threshold:
+            if avg_drawdown <= drawdown_threshold and avg_return <= return_threshold:
                 label = "Crisis"
             elif avg_volatility >= volatility_threshold or avg_vix >= vix_threshold:
                 label = "High Volatility"
