@@ -74,14 +74,16 @@ function MarketTape() {
 	const rows = [...liveRows, ...liveRows];
 
 	return (
-		<div className="border-border/70 bg-card/70 overflow-hidden border-b py-2 backdrop-blur-xl">
+		<div className="border-border/70 bg-card/70 group relative overflow-hidden border-b py-2 backdrop-blur-xl">
+			<div className="from-card pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r to-transparent" />
+			<div className="from-card pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l to-transparent" />
 			<div className="auth-market-tape flex w-max items-center gap-7 px-4">
 				{rows.map((item, index) => (
 					<div
 						key={`${item.ticker}-${index}`}
 						className="flex items-center gap-2 text-xs sm:text-sm"
 					>
-						<span className="bg-positive size-1.5 rounded-full" aria-hidden />
+						<span className="bg-primary/80 size-1.5 rounded-full" aria-hidden />
 						<span className="text-foreground/90 font-medium">{item.ticker}</span>
 						<span className="text-muted-foreground">
 							{item.price ? formatNumber(item.price, 2) : 'syncing'}
@@ -142,7 +144,7 @@ export function AuthShell({
 	return (
 		<main className="bg-background text-foreground flex min-h-screen flex-col overflow-x-hidden">
 			<MarketTape />
-			<div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 items-start gap-4 px-5 py-4 sm:gap-6 sm:py-7 md:px-8 lg:grid-cols-5 lg:items-center lg:gap-12 lg:px-12">
+			<div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 items-start gap-4 px-5 py-4 sm:gap-6 sm:py-7 md:px-8 lg:grid-cols-5 lg:items-center lg:gap-10 lg:px-12">
 				<section className="auth-hero-enter flex min-w-0 flex-col justify-center lg:col-span-3">
 					<div className="mb-4 flex items-center justify-between gap-4 sm:mb-8 lg:mb-12">
 						<BrandHeader />
@@ -157,26 +159,67 @@ export function AuthShell({
 							what your risk actually looks like, not just on average, but right now.
 						</p>
 						<div className="mt-9 hidden max-w-2xl sm:block" aria-hidden="true">
-							<div className="text-muted-foreground mb-2 flex items-center justify-between text-xs">
-								<span>Market state signal</span>
-								<span className="text-cyan-300/80">regime transition detected</span>
+							<div className="text-muted-foreground mb-3 flex items-center justify-between text-xs">
+								<span>Latent market-state field</span>
+								<span className="inline-flex items-center gap-2">
+									<span className="bg-positive auth-live-dot size-1.5 rounded-full" />
+									Signal active
+								</span>
 							</div>
-							<svg viewBox="0 0 680 104" className="h-24 w-full overflow-visible">
-								<path d="M0 55 H680" fill="none" stroke="var(--border)" strokeDasharray="5 9" />
+							<svg viewBox="0 0 680 150" className="h-36 w-full overflow-visible">
+								<path d="M0 79 H680" fill="none" stroke="var(--border)" strokeDasharray="4 10" />
+								<path d="M428 6 V142" fill="none" stroke="var(--border)" strokeDasharray="3 8" />
 								<path
-									className="auth-signal-line"
-									d="M0 72 C72 72 94 24 164 31 S268 92 340 70 S430 18 496 42 S584 91 680 32"
+									className="auth-signal-contour auth-signal-contour-one"
+									d="M-18 112 C75 107 92 18 184 29 S298 139 389 101 S488 8 562 37 S628 119 704 72"
+									fill="none"
+									stroke="var(--chart-1)"
+									strokeWidth="1"
+								/>
+								<path
+									className="auth-signal-contour auth-signal-contour-two"
+									d="M-14 125 C70 116 103 39 185 45 S293 130 382 111 S485 24 560 52 S627 125 700 84"
 									fill="none"
 									stroke="var(--chart-2)"
-									strokeWidth="2.5"
+									strokeWidth="1"
+								/>
+								<path
+									className="auth-signal-contour auth-signal-contour-three"
+									d="M-10 137 C78 127 114 60 192 61 S292 126 376 120 S478 42 553 68 S628 132 696 98"
+									fill="none"
+									stroke="var(--muted-foreground)"
+									strokeWidth="1"
+								/>
+								<path
+									className="auth-signal-line"
+									d="M-18 112 C75 107 92 18 184 29 S298 139 389 101 S488 8 562 37 S628 119 704 72"
+									fill="none"
+									stroke="var(--chart-2)"
+									strokeWidth="2.75"
 									strokeLinecap="round"
 								/>
 								<circle
-									className="auth-signal-pulse origin-center"
-									cx="422"
-									cy="33"
+									className="auth-signal-pulse"
+									cx="428"
+									cy="58"
 									r="5"
 									fill="var(--chart-2)"
+								/>
+								<circle
+									cx="184"
+									cy="29"
+									r="3"
+									fill="var(--background)"
+									stroke="var(--chart-1)"
+									strokeWidth="2"
+								/>
+								<circle
+									cx="562"
+									cy="37"
+									r="3"
+									fill="var(--background)"
+									stroke="var(--chart-2)"
+									strokeWidth="2"
 								/>
 							</svg>
 						</div>
@@ -185,7 +228,7 @@ export function AuthShell({
 
 				<section
 					className={cn(
-						'auth-card-enter flex min-w-0 items-center justify-center lg:col-span-2',
+						'auth-card-enter flex min-w-0 items-center justify-center lg:col-span-2 lg:border-l lg:pl-10',
 						className
 					)}
 				>

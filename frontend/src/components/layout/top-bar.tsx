@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Bell, LogOut, Plus, RefreshCw, RotateCcw, Upload, User } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,6 +30,21 @@ import { useAuth } from '@/lib/auth';
 import { useSelectedPortfolio } from '@/lib/portfolio-context';
 import { useAlerts, useDemoPortfolio, useHealth, useRefreshIntelligence } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+
+const ROUTE_LABELS: Record<string, string> = {
+	'/dashboard': 'Dashboard',
+	'/portfolios': 'Portfolios',
+	'/trades': 'Trades',
+	'/upload': 'Import',
+	'/market': 'Market data',
+	'/risk': 'Risk analytics',
+	'/regime': 'Regime analytics',
+	'/stress-tests': 'Stress tests',
+	'/portfolio-health': 'Portfolio health',
+	'/recommendations': 'Recommendations',
+	'/ai-copilot': 'AI Copilot',
+	'/settings': 'Settings'
+};
 
 export function PortfolioSelector({ className }: { className?: string }) {
 	const { portfolios, isLoading, selectedId, select } = useSelectedPortfolio();
@@ -122,6 +137,11 @@ export function TopBar() {
 	const refreshIntelligence = useRefreshIntelligence(selected?.id);
 	const demoPortfolio = useDemoPortfolio();
 	const router = useRouter();
+	const pathname = usePathname();
+	const routeLabel =
+		Object.entries(ROUTE_LABELS).find(([route]) =>
+			pathname === route ? true : route !== '/dashboard' && pathname.startsWith(`${route}/`)
+		)?.[1] ?? 'Workspace';
 	const resetDemo = async () => {
 		try {
 			const result = await demoPortfolio.reset.mutateAsync();
@@ -154,7 +174,15 @@ export function TopBar() {
 		<header className="bg-background/88 sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b px-3 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] backdrop-blur-xl sm:px-5">
 			<SidebarTrigger className="shrink-0" />
 			<div className="min-w-0 flex-1">
-				<PortfolioSelector />
+				<div className="flex min-w-0 items-center gap-3">
+					<PortfolioSelector />
+					<div className="border-border/70 hidden min-w-0 items-center gap-2 border-l pl-3 lg:flex">
+						<span className="bg-positive relative size-1.5 shrink-0 rounded-full">
+							<span className="bg-positive absolute inset-0 rounded-full opacity-50 motion-safe:animate-ping" />
+						</span>
+						<span className="text-muted-foreground truncate text-xs">{routeLabel}</span>
+					</div>
+				</div>
 			</div>
 			<div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
 				<Button
@@ -251,10 +279,14 @@ export function TopBar() {
 						</DropdownMenuItem>
 						<DropdownMenuItem
 							onClick={async () => {
-								await queryClient.cancelQueries();
-								queryClient.clear();
-								signOut();
-								router.replace('/login');
+								try {
+									await signOut();
+									await queryClient.cancelQueries();
+									queryClient.clear();
+									router.replace('/login');
+								} catch {
+									toast.error('Could not securely end this session. Please retry.');
+								}
 							}}
 						>
 							<LogOut className="size-4" /> {user?.isGuest ? 'Exit guest session' : 'Log out'}

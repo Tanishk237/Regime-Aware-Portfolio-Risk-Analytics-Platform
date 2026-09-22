@@ -36,6 +36,7 @@ import type { Position } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 import { DashboardGuide } from './dashboard-guide';
+import { PortfolioSignal, RegimeStateRail } from './dashboard-signals';
 
 export default function DashboardPage() {
 	return (
@@ -162,13 +163,16 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 							</Button>
 						}
 					>
-						<div className="grid gap-2 lg:grid-cols-3">
-							{intelligence.data.executive_summary.slice(0, 3).map((item) => (
+						<div className="divide-border grid divide-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+							{intelligence.data.executive_summary.slice(0, 3).map((item, index) => (
 								<div
 									key={item}
-									className="bg-surface-strong/35 rounded-md border p-3 text-sm leading-6"
+									className="flex gap-3 py-3 text-sm leading-6 first:pt-0 last:pb-0 lg:px-4 lg:py-0 lg:first:pl-0 lg:last:pr-0"
 								>
-									{item}
+									<span className="num text-primary/80 pt-0.5 text-xs font-semibold">
+										0{index + 1}
+									</span>
+									<span>{item}</span>
 								</div>
 							))}
 						</div>
@@ -183,7 +187,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 				<MetricGridSkeleton count={6} />
 			) : (
 				<Reveal className="grid gap-4 lg:grid-cols-5">
-					<Card className="panel-surface relative overflow-hidden p-5 sm:p-6 lg:col-span-3">
+					<Card className="panel-surface signal-surface relative min-h-[19rem] overflow-hidden p-5 sm:p-6 lg:col-span-3">
 						<div className="flex flex-wrap items-start justify-between gap-4">
 							<div>
 								<p className="text-muted-foreground text-xs font-medium uppercase">
@@ -206,8 +210,9 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 								<p className="num mt-2 text-2xl font-semibold">{formatPercent(totalReturn)}</p>
 							</div>
 						</div>
-						<Separator className="my-5" />
-						<div className="grid gap-4 text-sm sm:grid-cols-3">
+						<PortfolioSignal data={chartCumulative} />
+						<Separator className="mb-5 mt-1" />
+						<div className="grid gap-3 text-sm sm:grid-cols-3">
 							<DashboardDatum
 								label="Invested capital"
 								value={formatCurrency(summary.data?.invested_value, currency)}
@@ -223,7 +228,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 						</div>
 					</Card>
 
-					<Card className="panel-surface relative overflow-hidden p-5 sm:p-6 lg:col-span-2">
+					<Card className="panel-surface signal-surface relative min-h-[19rem] overflow-hidden p-5 sm:p-6 lg:col-span-2">
 						<div className="flex items-start justify-between gap-4">
 							<div>
 								<p className="text-muted-foreground text-xs font-medium uppercase">
@@ -244,6 +249,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 								<Activity className="size-5" />
 							</div>
 						</div>
+						<RegimeStateRail currentRegime={regimeData?.current_regime} />
 						<div className="mt-6">
 							<div className="mb-2 flex items-center justify-between text-xs">
 								<span className="text-muted-foreground">State fit probability</span>

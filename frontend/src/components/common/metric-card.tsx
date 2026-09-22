@@ -65,8 +65,9 @@ export function MetricCard({
 	return (
 		<Card
 			data-testid={testId}
+			data-interactive="true"
 			className={cn(
-				'panel-surface border-border/70 hover:border-primary/25 group relative min-h-32 gap-0 overflow-hidden p-4',
+				'metric-surface panel-surface border-border/70 hover:border-primary/25 group relative min-h-32 gap-0 overflow-hidden p-4',
 				className
 			)}
 		>
@@ -75,7 +76,11 @@ export function MetricCard({
 				{labelNode}
 				<div className="flex items-center gap-1">
 					{explanation ? <MetricExplanationControl {...explanation} /> : null}
-					{icon ? <span className="text-muted-foreground">{icon}</span> : null}
+					{icon ? (
+						<span className="text-muted-foreground group-hover:text-primary transition-colors duration-200">
+							{icon}
+						</span>
+					) : null}
 				</div>
 			</div>
 			{loading ? (

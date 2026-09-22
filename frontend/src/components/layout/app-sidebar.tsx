@@ -30,6 +30,7 @@ import {
 	useSidebar
 } from '@/components/ui/sidebar';
 import { LatentBrand, LatentMark } from '@/components/brand/latent-brand';
+import { cn } from '@/lib/utils';
 
 const NAV = [
 	{
@@ -71,7 +72,7 @@ export function AppSidebar() {
 
 	return (
 		<Sidebar collapsible="icon" className="border-sidebar-border">
-			<SidebarHeader className="border-sidebar-border border-b px-3 py-4">
+			<SidebarHeader className="border-sidebar-border relative border-b px-3 py-4">
 				<Link href="/dashboard" className="flex items-center gap-2.5">
 					{collapsed ? (
 						<LatentMark variant="dark" className="size-8 shrink-0 rounded-lg" />
@@ -90,9 +91,25 @@ export function AppSidebar() {
 									const active = pathname === item.url || pathname.startsWith(`${item.url}/`);
 									return (
 										<SidebarMenuItem key={item.url}>
-											<SidebarMenuButton asChild isActive={active} tooltip={item.title}>
-												<Link href={item.url} onClick={() => isMobile && setOpenMobile(false)}>
-													<item.icon />
+											<SidebarMenuButton
+												asChild
+												isActive={active}
+												tooltip={item.title}
+												className="h-9"
+											>
+												<Link
+													href={item.url}
+													className="relative"
+													onClick={() => isMobile && setOpenMobile(false)}
+												>
+													<span
+														aria-hidden
+														className={cn(
+															'bg-sidebar-primary absolute inset-y-1 left-0 w-0.5 rounded-full transition-opacity duration-200',
+															active ? 'opacity-100' : 'opacity-0'
+														)}
+													/>
+													<item.icon className={active ? 'text-sidebar-primary' : undefined} />
 													<span>{item.title}</span>
 												</Link>
 											</SidebarMenuButton>
