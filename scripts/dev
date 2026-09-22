@@ -6,6 +6,7 @@ BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_HOST="${FRONTEND_HOST:-localhost}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+BACKEND_PYTHON="${LATENT_PYTHON:-${ROOT_DIR}/venv/bin/python}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -24,7 +25,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-if [[ ! -x "${ROOT_DIR}/venv/bin/uvicorn" ]]; then
+if [[ ! -x "${BACKEND_PYTHON}" ]]; then
 	echo "Backend venv not found. Run: python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
 	exit 1
 fi
@@ -39,7 +40,7 @@ fi
 echo "Starting Latent backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 (
 	cd "${ROOT_DIR}"
-	"${ROOT_DIR}/venv/bin/uvicorn" src.api.main:app --reload --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
+	"${BACKEND_PYTHON}" -m uvicorn src.api.main:app --reload --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
 ) &
 BACKEND_PID=$!
 

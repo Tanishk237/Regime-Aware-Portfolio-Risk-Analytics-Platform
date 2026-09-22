@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(frontendDir, '..');
 const e2eDatabaseUrl = `sqlite:////tmp/latent-playwright-${process.pid}.db`;
+const backendPython = process.env['LATENT_PYTHON'] ?? `${rootDir}/venv/bin/python`;
 
 export default defineConfig({
 	testDir: './e2e',
@@ -29,7 +30,7 @@ export default defineConfig({
 	],
 	webServer: [
 		{
-			command: `${rootDir}/venv/bin/uvicorn src.api.main:app --host 127.0.0.1 --port 8010`,
+			command: `${backendPython} -m uvicorn src.api.main:app --host 127.0.0.1 --port 8010`,
 			cwd: rootDir,
 			url: 'http://127.0.0.1:8010/api/v1/health',
 			reuseExistingServer: !process.env['CI'],

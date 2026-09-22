@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import type { NextConfig } from 'next';
 
-const isProduction = process.env['NEXT_PUBLIC_APP_ENV'] === 'production';
+const isProduction = process.env.NODE_ENV === 'production';
 const apiOrigin = (() => {
 	try {
 		return new URL(process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:8000/api/v1')

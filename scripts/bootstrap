@@ -2,8 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKEND_PYTHON="${LATENT_PYTHON:-${ROOT_DIR}/venv/bin/python}"
 
-if [[ ! -x "${ROOT_DIR}/venv/bin/alembic" ]]; then
+if [[ ! -x "${BACKEND_PYTHON}" ]]; then
 	echo "Backend venv not found. Create it and install requirements first."
 	exit 1
 fi
@@ -31,7 +32,7 @@ fi
 echo "Applying database migrations..."
 (
 	cd "${ROOT_DIR}"
-	"${ROOT_DIR}/venv/bin/alembic" upgrade head
+	"${BACKEND_PYTHON}" -m alembic upgrade head
 )
 
 echo "Database is ready."

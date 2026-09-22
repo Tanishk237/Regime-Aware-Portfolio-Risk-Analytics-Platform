@@ -40,14 +40,14 @@ jobs:
       TRUSTED_HOSTS: localhost,127.0.0.1,testserver
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -57,7 +57,7 @@ jobs:
         run: |
           python -m venv venv
           venv/bin/pip install --upgrade pip
-          venv/bin/pip install -r requirements.txt
+          venv/bin/pip install -r requirements-dev.txt
 
       - name: Verify PostgreSQL migrations
         run: |
@@ -84,6 +84,9 @@ jobs:
       - name: Python dependency integrity
         run: venv/bin/pip check
 
+      - name: Python vulnerability audit
+        run: venv/bin/pip-audit --strict --requirement requirements.txt
+
       - name: Install frontend
         working-directory: frontend
         run: npm ci
@@ -106,14 +109,14 @@ jobs:
 
       - name: Check for committed provider secrets
         run: |
-          if git grep -nE 'nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}'; then
-            echo "Potential provider credential found in tracked files."
+          if git grep -nE 'nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|postgres(ql)?(\+psycopg)?://[^[:space:]]+:[^[:space:]@]+@[^[:space:]]+\.(neon\.tech|supabase\.co|amazonaws\.com)|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'; then
+            echo "Potential credential or private key found in tracked files."
             exit 1
           fi
 
       - name: Upload Playwright artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-artifacts
           path: |

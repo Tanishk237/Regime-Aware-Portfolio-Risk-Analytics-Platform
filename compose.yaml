@@ -25,6 +25,7 @@ services:
     env_file:
       - .env
     environment:
+      ENVIRONMENT: development
       DATABASE_URL: postgresql+psycopg://latent:latent@db:5432/latent
       DATABASE_SSL_MODE: disable
       RUN_MIGRATIONS_ON_STARTUP: "true"
@@ -32,7 +33,7 @@ services:
       CORS_ORIGINS: http://localhost:3000
       TRUSTED_HOSTS: localhost,127.0.0.1,api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -58,7 +59,7 @@ services:
         NEXT_PUBLIC_SITE_URL: http://localhost:3000
         NEXT_PUBLIC_APP_ENV: production
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy

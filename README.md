@@ -103,7 +103,7 @@ From the repository root:
 ```bash
 python3.12 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env
 ```
 
@@ -636,7 +636,7 @@ If `yfinance` repeatedly prints `NotOpenSSLWarning`, the virtual environment was
 brew install python@3.12
 python3.12 -m venv venv312
 source venv312/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 Use the new environment for Alembic, pytest, and Uvicorn. Do not suppress the warning in application code because that can hide a real TLS compatibility problem.

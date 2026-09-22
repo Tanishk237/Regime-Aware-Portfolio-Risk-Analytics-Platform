@@ -2,13 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKEND_PYTHON="${LATENT_PYTHON:-${ROOT_DIR}/venv/bin/python}"
 
 cd "${ROOT_DIR}"
-venv/bin/python -m pip check
-venv/bin/pytest -q
+"${BACKEND_PYTHON}" -m pip check
+"${BACKEND_PYTHON}" -m pip_audit --strict --requirement requirements.txt
+"${BACKEND_PYTHON}" -m pytest -q
 
-if git grep -nE 'nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}'; then
-	echo "Potential provider credential found in tracked files."
+if git grep -nE 'nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|postgres(ql)?(\+psycopg)?://[^[:space:]]+:[^[:space:]@]+@[^[:space:]]+\.(neon\.tech|supabase\.co|amazonaws\.com)|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'; then
+	echo "Potential credential or private key found in tracked files."
 	exit 1
 fi
 
