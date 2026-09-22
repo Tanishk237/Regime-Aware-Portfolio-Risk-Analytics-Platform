@@ -2,7 +2,7 @@ pandas==2.3.3
 numpy==2.0.2
 yfinance==1.7.0
 curl-cffi==0.16.3
-joblib==1.5.3
+joblib==1.6.0
 scikit-learn==1.6.1
 hmmlearn==0.3.3
 fastapi==0.141.1
