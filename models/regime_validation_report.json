@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "validated": false,
+  "scope": "time-ordered out-of-sample regime classification",
+  "reason": "Independent regime labels and leakage-safe walk-forward predictions have not been supplied yet.",
+  "disclosure": "HMM state-fit probability is not predictive accuracy."
+}
