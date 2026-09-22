@@ -25,6 +25,9 @@ class PortfolioCrudService:
         base_currency: str = "INR",
         benchmark: str = "NIFTY50",
     ) -> Portfolio:
+        self.db.execute(
+            select(User.id).where(User.id == user.id).with_for_update()
+        ).scalar_one()
         portfolio_count = self.db.scalar(
             select(func.count(Portfolio.id)).where(Portfolio.user_id == user.id)
         ) or 0

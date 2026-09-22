@@ -77,6 +77,9 @@ class PortfolioDemoService:
         *,
         reset: bool = False,
     ) -> tuple[Portfolio, int, bool]:
+        self.db.execute(
+            select(User.id).where(User.id == user.id).with_for_update()
+        ).scalar_one()
         existing = self.db.scalar(
             select(Portfolio)
             .where(Portfolio.user_id == user.id, Portfolio.is_demo.is_(True))

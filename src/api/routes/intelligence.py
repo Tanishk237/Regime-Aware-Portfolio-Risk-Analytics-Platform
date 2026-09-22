@@ -67,18 +67,24 @@ def enforce_intelligence_limit(
 
 @router.get("/profile", response_model=RiskProfileRead)
 def get_risk_profile(
+    request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
 ) -> RiskProfileRead:
+    enforce_intelligence_limit(request, db, settings, user)
     return RiskProfileRead.model_validate(RiskProfileService(db).get_or_create(user))
 
 
 @router.put("/profile", response_model=RiskProfileRead)
 def update_risk_profile(
     payload: RiskProfileUpdate,
+    request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
 ) -> RiskProfileRead:
+    enforce_intelligence_limit(request, db, settings, user)
     profile = RiskProfileService(db).update(user, **payload.model_dump())
     return RiskProfileRead.model_validate(profile)
 
@@ -153,9 +159,12 @@ def update_recommendation_state(
     portfolio_id: int,
     recommendation_id: int,
     payload: ReadStateUpdate,
+    request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
 ) -> RecommendationRead:
+    enforce_intelligence_limit(request, db, settings, user)
     service = RecommendationService(db)
     item = service.set_read(user, portfolio_id, recommendation_id, payload.is_read)
     return RecommendationRead(**service.serialize(item))
@@ -164,9 +173,12 @@ def update_recommendation_state(
 @router.get("/portfolio/{portfolio_id}/alerts", response_model=list[AlertRead])
 def alerts(
     portfolio_id: int,
+    request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
 ) -> list[AlertRead]:
+    enforce_intelligence_limit(request, db, settings, user)
     service = RecommendationService(db)
     return [AlertRead(**service.serialize_alert(item)) for item in service.list_alerts(user, portfolio_id)]
 
@@ -179,9 +191,12 @@ def update_alert_state(
     portfolio_id: int,
     alert_id: int,
     payload: ReadStateUpdate,
+    request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
 ) -> AlertRead:
+    enforce_intelligence_limit(request, db, settings, user)
     service = RecommendationService(db)
     alert = service.set_alert_read(user, portfolio_id, alert_id, payload.is_read)
     return AlertRead(**service.serialize_alert(alert))

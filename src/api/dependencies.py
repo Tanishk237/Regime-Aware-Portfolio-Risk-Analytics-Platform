@@ -60,7 +60,7 @@ def get_current_user(
             status_code=403,
         )
 
-    if payload.get("guest") is True and not user.is_guest:
+    if (payload.get("guest") is True) != user.is_guest:
         raise AppError(
             "Could not validate authentication credentials.",
             code="INVALID_AUTH_TOKEN",

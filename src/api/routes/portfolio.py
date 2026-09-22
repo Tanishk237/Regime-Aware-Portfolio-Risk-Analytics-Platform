@@ -241,10 +241,10 @@ def reset_demo_portfolio(
 @router.post("/upload", response_model=PortfolioUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_portfolio(
     request: Request,
-    name: str = Form(...),
-    description: Optional[str] = Form(default=None),
-    base_currency: str = Form(default="INR"),
-    benchmark: str = Form(default="NIFTY50"),
+    name: str = Form(..., min_length=1, max_length=255),
+    description: Optional[str] = Form(default=None, max_length=2000),
+    base_currency: str = Form(default="INR", min_length=3, max_length=12),
+    benchmark: str = Form(default="NIFTY50", min_length=1, max_length=64),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),

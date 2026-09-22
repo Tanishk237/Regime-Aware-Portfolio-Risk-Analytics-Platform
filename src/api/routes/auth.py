@@ -12,6 +12,7 @@ from src.api.dependencies import get_current_user
 from src.api.errors import AppError
 from src.api.schemas_auth import AuthResponse, DeleteAccountRequest, LoginRequest, SignupRequest, UserRead
 from src.auth import create_access_token, hash_password, verify_password
+from src.auth.security import DUMMY_PASSWORD_HASH
 from src.auth.lifecycle import delete_user
 from src.auth.rate_limit import enforce_rate_limit, request_identity
 from src.config import Settings, get_settings
@@ -153,6 +154,7 @@ def login(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
+    normalized_email = payload.email.lower()
     enforce_rate_limit(
         db,
         bucket="auth:login",
@@ -161,8 +163,20 @@ def login(
         window_seconds=settings.auth_rate_limit_window_seconds,
         secret_key=settings.auth_secret_key,
     )
-    user = db.scalar(select(User).where(User.email == payload.email.lower()))
-    if user is None or not verify_password(payload.password, user.password_hash):
+    enforce_rate_limit(
+        db,
+        bucket="auth:login:account",
+        identity=normalized_email,
+        limit=settings.auth_account_login_rate_limit,
+        window_seconds=settings.auth_account_login_rate_limit_window_seconds,
+        secret_key=settings.auth_secret_key,
+    )
+    user = db.scalar(select(User).where(User.email == normalized_email))
+    password_matches = verify_password(
+        payload.password,
+        user.password_hash if user is not None else DUMMY_PASSWORD_HASH,
+    )
+    if user is None or not password_matches:
         raise AppError(
             "Invalid email or password.",
             code="INVALID_LOGIN",
@@ -220,6 +234,7 @@ def end_guest_session(
 @router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(
     payload: DeleteAccountRequest,
+    request: Request,
     response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -230,6 +245,22 @@ def delete_account(
             "Guest sessions should be ended instead of deleting an account.",
             code="ACCOUNT_REQUIRED",
             status_code=400,
+        )
+    for bucket, identity, limit in (
+        ("auth:account-delete:user", f"user:{user.id}", settings.auth_sensitive_action_rate_limit),
+        (
+            "auth:account-delete:network",
+            request_identity(request),
+            settings.auth_sensitive_action_ip_rate_limit,
+        ),
+    ):
+        enforce_rate_limit(
+            db,
+            bucket=bucket,
+            identity=identity,
+            limit=limit,
+            window_seconds=settings.auth_sensitive_action_rate_limit_window_seconds,
+            secret_key=settings.auth_secret_key,
         )
     if not verify_password(payload.password, user.password_hash):
         raise AppError(

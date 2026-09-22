@@ -1,6 +1,7 @@
 import json
+import secrets
 from functools import lru_cache
-from typing import Annotated, List
+from typing import Annotated, List, Literal
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import Field, field_validator, model_validator
@@ -37,11 +38,12 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        str_strip_whitespace=True,
     )
 
     app_name: str = "Latent"
     app_version: str = "0.1.0"
-    environment: str = "development"
+    environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
     log_json: bool = False
@@ -56,7 +58,7 @@ class Settings(BaseSettings):
     run_migrations_on_startup: bool = False
     default_user_email: str = "local@example.com"
     default_user_name: str = "Local User"
-    auth_secret_key: str = "change-me-in-production"
+    auth_secret_key: str = Field(default="", repr=False)
     access_token_expire_minutes: int = 60 * 24
     guest_session_expire_minutes: int = 60 * 12
     guest_data_retention_hours: int = 24
@@ -121,7 +123,10 @@ class Settings(BaseSettings):
     sentry_dsn: str = Field(default="", repr=False)
     sentry_traces_sample_rate: float = Field(default=0.05, ge=0.0, le=1.0)
     auth_login_rate_limit: int = Field(default=10, ge=1, le=1000)
+    auth_account_login_rate_limit: int = Field(default=20, ge=1, le=10_000)
     auth_signup_rate_limit: int = Field(default=5, ge=1, le=1000)
+    auth_sensitive_action_rate_limit: int = Field(default=5, ge=1, le=1000)
+    auth_sensitive_action_ip_rate_limit: int = Field(default=20, ge=1, le=10_000)
     guest_rate_limit: int = Field(default=10, ge=1, le=1000)
     ai_rate_limit: int = Field(default=30, ge=1, le=10_000)
     ai_guest_rate_limit: int = Field(default=10, ge=1, le=10_000)
@@ -130,6 +135,12 @@ class Settings(BaseSettings):
     analytics_guest_rate_limit: int = Field(default=30, ge=1, le=100_000)
     analytics_ip_rate_limit: int = Field(default=300, ge=1, le=100_000)
     auth_rate_limit_window_seconds: int = Field(default=60, ge=10, le=86_400)
+    auth_account_login_rate_limit_window_seconds: int = Field(
+        default=900, ge=60, le=86_400
+    )
+    auth_sensitive_action_rate_limit_window_seconds: int = Field(
+        default=3600, ge=60, le=86_400
+    )
     signup_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=86_400)
     ai_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=86_400)
     analytics_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=86_400)
@@ -204,6 +215,10 @@ class Settings(BaseSettings):
                 )
             if not self.auth_cookie_secure:
                 raise ValueError(f"AUTH_COOKIE_SECURE must be true in {environment_name}")
+            if self.auth_cookie_samesite == "none":
+                raise ValueError(
+                    f"AUTH_COOKIE_SAMESITE cannot be 'none' in {environment_name}"
+                )
             if not self.database_url.startswith("postgresql"):
                 raise ValueError(f"DATABASE_URL must use PostgreSQL in {environment_name}")
             if self.migration_database_url and not self.migration_database_url.startswith(
@@ -217,13 +232,23 @@ class Settings(BaseSettings):
                     f"MARKET_DATA_PROVIDER cannot use test-fixture in {environment_name}"
                 )
             has_verified_tls = self.database_ssl_mode == "verify-full"
-            has_bound_tls = (
+            runtime_has_bound_tls = (
                 self.database_ssl_mode == "require"
                 and _requires_tls_channel_binding(self.database_url)
             )
-            if not (has_verified_tls or has_bound_tls):
+            migration_has_bound_tls = (
+                self.database_ssl_mode == "require"
+                and _requires_tls_channel_binding(
+                    self.effective_migration_database_url
+                )
+            )
+            if not (
+                has_verified_tls
+                or (runtime_has_bound_tls and migration_has_bound_tls)
+            ):
                 raise ValueError(
-                    "PostgreSQL TLS requires DATABASE_SSL_MODE=verify-full or "
+                    "Runtime and migration PostgreSQL TLS require "
+                    "DATABASE_SSL_MODE=verify-full or "
                     "DATABASE_SSL_MODE=require with channel_binding=require "
                     f"in {environment_name}"
                 )
@@ -233,6 +258,9 @@ class Settings(BaseSettings):
                 )
             if self.nvidia_api_key and not self.nvidia_base_url.startswith("https://"):
                 raise ValueError(f"NVIDIA_BASE_URL must use HTTPS in {environment_name}")
+        elif not self.auth_secret_key:
+            # Local and test instances get an unguessable, process-scoped key by default.
+            self.auth_secret_key = secrets.token_urlsafe(32)
         return self
 
     @property

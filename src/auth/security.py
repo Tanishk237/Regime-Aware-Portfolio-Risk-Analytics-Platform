@@ -35,6 +35,10 @@ def hash_password(password: str) -> str:
     return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${_b64url_encode(salt)}${_b64url_encode(digest)}"
 
 
+# Missing accounts still perform the same password work as registered accounts.
+DUMMY_PASSWORD_HASH = hash_password("latent-invalid-account-password")
+
+
 def verify_password(password: str, stored_hash: str | None) -> bool:
     if not stored_hash:
         return False

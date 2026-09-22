@@ -65,5 +65,7 @@ def configure_sentry(
         environment=environment,
         release=release,
         traces_sample_rate=traces_sample_rate,
+        include_local_variables=False,
+        max_request_body_size="never",
         send_default_pii=False,
     )

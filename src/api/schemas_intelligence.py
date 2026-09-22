@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 Severity = Literal["high", "medium", "low"]
+RestrictionText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+]
+TickerKey = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=32),
+]
 
 
 class RiskProfileUpdate(BaseModel):
@@ -15,7 +23,7 @@ class RiskProfileUpdate(BaseModel):
     max_drawdown_tolerance: float = Field(default=0.20, ge=0.01, le=0.90)
     liquidity_needs: Literal["low", "medium", "high"] = "medium"
     income_requirement: Optional[str] = Field(default=None, max_length=1000)
-    restrictions: list[str] = Field(default_factory=list, max_length=30)
+    restrictions: list[RestrictionText] = Field(default_factory=list, max_length=30)
 
 
 class RiskProfileRead(RiskProfileUpdate):
@@ -109,7 +117,7 @@ class StressScenarioPreview(BaseModel):
     prompt: str
     market_shock: float = Field(ge=-100, le=100)
     volatility_shock: float = Field(ge=-100, le=500)
-    ticker_shocks: dict[str, float] = Field(default_factory=dict)
+    ticker_shocks: dict[TickerKey, float] = Field(default_factory=dict, max_length=100)
     assumptions: list[str]
     requires_confirmation: bool = True
 
@@ -119,7 +127,7 @@ class StressScenarioRunRequest(BaseModel):
     description: Optional[str] = Field(default=None, max_length=2000)
     market_shock: float = Field(ge=-100, le=100)
     volatility_shock: float = Field(default=0, ge=-100, le=500)
-    ticker_shocks: dict[str, float] = Field(default_factory=dict)
+    ticker_shocks: dict[TickerKey, float] = Field(default_factory=dict, max_length=100)
     confirmed: bool
 
 

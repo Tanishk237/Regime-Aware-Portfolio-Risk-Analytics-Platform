@@ -19,14 +19,14 @@ class UserRead(BaseModel):
 
 class PortfolioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=2000)
     base_currency: str = Field(default="INR", min_length=3, max_length=12)
     benchmark: str = Field(default="NIFTY50", min_length=1, max_length=64)
 
 
 class PortfolioUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=2000)
     base_currency: Optional[str] = Field(default=None, min_length=3, max_length=12)
     benchmark: Optional[str] = Field(default=None, min_length=1, max_length=64)
 
@@ -51,11 +51,11 @@ class TradeCreate(BaseModel):
     quantity: float = Field(gt=0)
     price: float = Field(gt=0)
     transaction_date: date
-    broker: Optional[str] = None
+    broker: Optional[str] = Field(default=None, max_length=255)
     fees: float = Field(default=0.0, ge=0)
     taxes: float = Field(default=0.0, ge=0)
     currency: str = Field(default="INR", min_length=3, max_length=12)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TradeUpdate(BaseModel):
@@ -64,11 +64,11 @@ class TradeUpdate(BaseModel):
     quantity: Optional[float] = Field(default=None, gt=0)
     price: Optional[float] = Field(default=None, gt=0)
     transaction_date: Optional[date] = None
-    broker: Optional[str] = None
+    broker: Optional[str] = Field(default=None, max_length=255)
     fees: Optional[float] = Field(default=None, ge=0)
     taxes: Optional[float] = Field(default=None, ge=0)
     currency: Optional[str] = Field(default=None, min_length=3, max_length=12)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class TradeRead(BaseModel):

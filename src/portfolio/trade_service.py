@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from src.api.errors import AppError
-from src.database.models import Trade, User
+from src.database.models import Portfolio, Trade, User
 
 
 class PortfolioTradeService:
@@ -41,6 +41,9 @@ class PortfolioTradeService:
         notes: str | None = None,
     ) -> Trade:
         self.get_portfolio(user, portfolio_id)
+        self.db.execute(
+            select(Portfolio.id).where(Portfolio.id == portfolio_id).with_for_update()
+        ).scalar_one()
         trade_count = self.db.scalar(
             select(func.count(Trade.id)).where(Trade.portfolio_id == portfolio_id)
         ) or 0
