@@ -11,6 +11,23 @@ BACKEND_PYTHON="${LATENT_PYTHON:-${ROOT_DIR}/venv/bin/python}"
 BACKEND_PID=""
 FRONTEND_PID=""
 
+port_in_use() {
+	local port="$1"
+	if command -v lsof >/dev/null 2>&1; then
+		lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+		return
+	fi
+	"${BACKEND_PYTHON}" -c 'import socket, sys; sock = socket.socket(); sock.settimeout(0.2); raise SystemExit(0 if sock.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0 else 1)' "${port}"
+}
+
+next_available_port() {
+	local port="$1"
+	while port_in_use "${port}"; do
+		port=$((port + 1))
+	done
+	echo "${port}"
+}
+
 cleanup() {
 	echo
 	echo "Stopping Latent dev servers..."
@@ -35,19 +52,33 @@ if [[ ! -d "${ROOT_DIR}/frontend/node_modules" ]]; then
 	exit 1
 fi
 
+REQUESTED_BACKEND_PORT="${BACKEND_PORT}"
+REQUESTED_FRONTEND_PORT="${FRONTEND_PORT}"
+BACKEND_PORT="$(next_available_port "${BACKEND_PORT}")"
+FRONTEND_PORT="$(next_available_port "${FRONTEND_PORT}")"
+
+if [[ "${BACKEND_PORT}" != "${REQUESTED_BACKEND_PORT}" ]]; then
+	echo "Port ${REQUESTED_BACKEND_PORT} is already in use; using backend port ${BACKEND_PORT}."
+fi
+if [[ "${FRONTEND_PORT}" != "${REQUESTED_FRONTEND_PORT}" ]]; then
+	echo "Port ${REQUESTED_FRONTEND_PORT} is already in use; using frontend port ${FRONTEND_PORT}."
+fi
+
 "${ROOT_DIR}/scripts/bootstrap"
 
 echo "Starting Latent backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 (
 	cd "${ROOT_DIR}"
-	"${BACKEND_PYTHON}" -m uvicorn src.api.main:app --reload --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
+	CORS_ORIGINS="http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}" \
+		"${BACKEND_PYTHON}" -m uvicorn src.api.main:app --reload --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
 ) &
 BACKEND_PID=$!
 
 echo "Starting Latent frontend: http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 (
 	cd "${ROOT_DIR}/frontend"
-	npm run dev -- --hostname "${FRONTEND_HOST}" --port "${FRONTEND_PORT}"
+	NEXT_PUBLIC_API_BASE_URL="http://localhost:${BACKEND_PORT}/api/v1" \
+		npm run dev -- --hostname "${FRONTEND_HOST}" --port "${FRONTEND_PORT}"
 ) &
 FRONTEND_PID=$!
 

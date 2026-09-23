@@ -10,6 +10,13 @@ if [[ ! -x "${BACKEND_PYTHON}" ]]; then
 fi
 
 DATABASE_URL_VALUE="$(awk -F= '/^DATABASE_URL=/{sub(/^DATABASE_URL=/, ""); print; exit}' "${ROOT_DIR}/.env" 2>/dev/null || true)"
+NEON_DATABASE_PASSWORD_VALUE="$(awk -F= '/^NEON_DATABASE_PASSWORD=/{sub(/^NEON_DATABASE_PASSWORD=/, ""); print; exit}' "${ROOT_DIR}/.env" 2>/dev/null || true)"
+if [[ "${DATABASE_URL_VALUE}" == *'${NEON_DATABASE_PASSWORD}'* ]] &&
+	[[ -z "${NEON_DATABASE_PASSWORD_VALUE}" || "${NEON_DATABASE_PASSWORD_VALUE}" == replace-with-* ]]; then
+	echo "Neon is configured, but NEON_DATABASE_PASSWORD is still a placeholder in .env."
+	echo "Paste the URL-encoded password from Neon's Connect dialog, then run ./scripts/dev again."
+	exit 1
+fi
 if [[ "${DATABASE_URL_VALUE}" == postgresql*localhost* || "${DATABASE_URL_VALUE}" == postgresql*127.0.0.1* ]]; then
 	if ! command -v docker >/dev/null 2>&1; then
 		echo "Local PostgreSQL is configured but Docker is unavailable. Install Docker or point DATABASE_URL at a managed PostgreSQL database."
