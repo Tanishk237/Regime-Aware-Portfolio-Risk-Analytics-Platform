@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta, timezone
 import logging
 from typing import Iterable
 
+from src.market.sector_taxonomy import resolve_sector
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +31,20 @@ class InstrumentMetadataService:
             if cached is None:
                 unresolved.append(ticker)
             else:
-                resolved[ticker] = cached
+                resolved[ticker] = self._classify_record(cached, ticker)
 
+        stored_records = self._get_stored_instrument_metadata(unresolved)
         stored = {
-            record["ticker"]: record
-            for record in self._get_stored_instrument_metadata(unresolved)
+            record["ticker"]: self._classify_record(record, record["ticker"])
+            for record in stored_records
         }
+        corrections = [
+            stored[record["ticker"]]
+            for record in stored_records
+            if stored[record["ticker"]]["sector"] != record.get("sector")
+        ]
+        if corrections:
+            self._upsert_instrument_metadata(corrections)
         stale_before = date.today() - timedelta(days=self.instrument_metadata_ttl_days)
         to_refresh = [
             ticker
@@ -55,17 +65,20 @@ class InstrumentMetadataService:
             )
 
         for ticker in unresolved:
-            record = stored.get(ticker) or {
-                "ticker": ticker,
-                "name": None,
-                "sector": "Unclassified",
-                "industry": None,
-                "exchange": None,
-                "country": None,
-                "currency": None,
-                "data_source": "unavailable",
-                "updated_at": None,
-            }
+            record = stored.get(ticker) or self._classify_record(
+                {
+                    "ticker": ticker,
+                    "name": None,
+                    "sector": None,
+                    "industry": None,
+                    "exchange": None,
+                    "country": None,
+                    "currency": None,
+                    "data_source": "unavailable",
+                    "updated_at": None,
+                },
+                ticker,
+            )
             resolved[ticker] = record
             cache_key = self._cache_key("instrument-metadata", [ticker], None, None)
             self.cache.set(cache_key, record, self.cache_ttl_seconds)
@@ -89,21 +102,36 @@ class InstrumentMetadataService:
                     record = future.result()
                 except Exception as exc:
                     logger.warning(
-                        "Instrument metadata provider failed for %s; using stored or unclassified data. %s",
+                        "Instrument metadata provider failed for %s; using stored or local classification. %s",
                         ticker,
                         exc,
                     )
                     continue
                 records.append(
-                    {
-                        **record,
-                        "ticker": ticker,
-                        "sector": record.get("sector") or "Unclassified",
-                        "data_source": record.get("data_source") or self.provider.name,
-                        "updated_at": datetime.now(timezone.utc),
-                    }
+                    self._classify_record(
+                        {
+                            **record,
+                            "ticker": ticker,
+                            "data_source": record.get("data_source")
+                            or self.provider.name,
+                            "updated_at": datetime.now(timezone.utc),
+                        },
+                        ticker,
+                    )
                 )
         return records
+
+    @staticmethod
+    def _classify_record(record: dict, ticker: str) -> dict:
+        return {
+            **record,
+            "ticker": ticker,
+            "sector": resolve_sector(
+                ticker,
+                record.get("sector"),
+                record.get("industry"),
+            ),
+        }
 
     @staticmethod
     def _metadata_is_stale(record: dict, stale_before: date) -> bool:
@@ -112,4 +140,6 @@ class InstrumentMetadataService:
             return True
         if isinstance(updated_at, str):
             updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        if str(record.get("sector") or "").strip().lower() == "other":
+            return updated_at.date() < date.today()
         return updated_at.date() < stale_before

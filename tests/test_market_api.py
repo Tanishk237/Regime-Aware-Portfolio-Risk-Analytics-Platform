@@ -463,7 +463,7 @@ def test_instrument_metadata_is_persisted_and_cached(tmp_path):
             db.close()
 
 
-def test_instrument_metadata_failure_returns_cached_unclassified_value(tmp_path):
+def test_instrument_metadata_failure_returns_cached_other_value(tmp_path):
     class MetadataFailingProvider(CountingProvider):
         def get_instrument_metadata(self, ticker):
             self.metadata_calls += 1
@@ -482,7 +482,7 @@ def test_instrument_metadata_failure_returns_cached_unclassified_value(tmp_path)
             second = service.get_instrument_metadata(["UNKNOWN.NS"])
 
             assert first == second
-            assert first[0]["sector"] == "Unclassified"
+            assert first[0]["sector"] == "Other"
             assert provider.metadata_calls == 1
         finally:
             db.close()

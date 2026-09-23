@@ -15,6 +15,7 @@ from src.intelligence.cache import (
 )
 from src.intelligence.profile_service import RiskProfileService
 from src.market import MarketDataService
+from src.market.sector_taxonomy import resolve_sector
 from src.portfolio.portfolio_service import PortfolioService
 
 
@@ -193,7 +194,11 @@ class PortfolioIntelligenceContextService:
             "unrealized_pnl": position.unrealized_pnl,
             "realized_pnl": position.realized_pnl,
             "name": metadata.get("name"),
-            "sector": metadata.get("sector") or "Unclassified",
+            "sector": resolve_sector(
+                position.ticker,
+                metadata.get("sector"),
+                metadata.get("industry"),
+            ),
             "industry": metadata.get("industry"),
             "updated_at": position.updated_at,
         }
@@ -210,7 +215,11 @@ class PortfolioIntelligenceContextService:
             value = float(value or 0)
             if value <= 0:
                 continue
-            sector = str(position.get("sector") or "Unclassified").strip() or "Unclassified"
+            sector = resolve_sector(
+                str(position.get("ticker") or ""),
+                position.get("sector"),
+                position.get("industry"),
+            )
             bucket = sectors.setdefault(
                 sector,
                 {
