@@ -198,6 +198,21 @@ FII_DII_CSV_PATH=data/external/fii_dii.csv
 REGIME_MODEL_DIR=models
 ```
 
+To use Neon locally without Docker, replace the local database values with the pooled and
+direct connection strings from Neon's **Connect** dialog. The password stays only in the
+ignored root `.env`:
+
+```env
+NEON_DATABASE_PASSWORD=replace-with-the-url-encoded-password
+DATABASE_URL=postgresql+psycopg://neondb_owner:${NEON_DATABASE_PASSWORD}@your-endpoint-pooler.region.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+MIGRATION_DATABASE_URL=postgresql+psycopg://neondb_owner:${NEON_DATABASE_PASSWORD}@your-endpoint.region.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_SSL_MODE=require
+```
+
+Use the password already embedded in Neon's generated connection string. If it contains URL
+special characters, keep Neon's encoded form. Never add `NEON_DATABASE_PASSWORD` to the
+frontend, a `NEXT_PUBLIC_*` variable, GitHub, or a committed env file.
+
 Important backend settings:
 
 - `DATABASE_URL`: PostgreSQL connection URL. SQLite is supported only for tests and transfer.
@@ -508,6 +523,84 @@ That lets the frontend show a useful result while still being honest about degra
   until a real leakage-safe report has `validated: true`.
 - Keep generated folders untracked: `venv/`, `.pytest_cache/`, `.next/`, `node_modules/`, and build cache files.
 - Never configure `MARKET_DATA_PROVIDER=test-fixture` outside automated tests.
+
+### Zero-Cost Public Deployment: Neon + Render + Vercel
+
+This is suitable for a public demo or low-traffic MVP. Render's free web service can sleep
+after inactivity and has an ephemeral filesystem, so it is not an always-on production SLA.
+All durable application data remains in Neon.
+
+#### 1. Prepare Neon and apply migrations
+
+1. In Neon, open **Connect** and copy both connection strings:
+   - pooled hostname (`-pooler`) for `DATABASE_URL`
+   - direct hostname for `MIGRATION_DATABASE_URL`
+2. Put the new password in the ignored root `.env` at `NEON_DATABASE_PASSWORD`.
+3. Confirm both generated URLs contain `sslmode=require&channel_binding=require`.
+4. Apply the schema from the repository root:
+
+```bash
+source venv/bin/activate
+alembic upgrade head
+alembic current
+```
+
+Do this once before the first backend deployment and again before deploying any release that
+contains a new migration.
+
+#### 2. Deploy the FastAPI backend on Render
+
+1. Push the repository to GitHub.
+2. In Render, select **New > Blueprint** and choose the repository. Render reads
+   `render.yaml` and creates the `latent-api` Docker web service.
+3. Enter these secret values when Render prompts:
+   - `DATABASE_URL`: complete pooled Neon URL, with the password included
+   - `MIGRATION_DATABASE_URL`: complete direct Neon URL
+   - `CORS_ORIGINS`: the exact Vercel URL, for example `https://latent.vercel.app`
+   - `TRUSTED_HOSTS`: the Render hostname only, for example `latent-api.onrender.com`
+   - `NVIDIA_API_KEY`: optional; leave blank if managed AI is not required
+4. Keep `RUN_MIGRATIONS_ON_STARTUP=false`; migrations are an explicit release step.
+5. Deploy and verify:
+
+```text
+https://your-latent-api.onrender.com/api/v1/health
+https://your-latent-api.onrender.com/api/v1/ready
+```
+
+`/health` should return first. `/ready` confirms Neon connectivity and the Alembic revision.
+The Docker image now respects Render's assigned `PORT` automatically.
+
+#### 3. Deploy the Next.js frontend on Vercel
+
+1. Import the same GitHub repository into Vercel.
+2. Set **Root Directory** to `frontend`; Vercel detects Next.js automatically.
+3. Add these Production environment variables:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=/api/v1
+LATENT_API_ORIGIN=https://your-latent-api.onrender.com
+NEXT_PUBLIC_SITE_URL=https://your-project.vercel.app
+NEXT_PUBLIC_API_TIMEOUT_MS=60000
+NEXT_PUBLIC_APP_ENV=production
+```
+
+4. Deploy the frontend.
+5. Replace Render's `CORS_ORIGINS` with the final Vercel URL if it changed, then redeploy the
+   backend.
+
+The browser calls `/api/v1` on the Vercel origin, and Next.js securely proxies those requests
+to `LATENT_API_ORIGIN`. This keeps account cookies first-party with `SameSite=Lax`; the Neon
+password, database URLs, and NVIDIA key never enter the browser bundle.
+
+#### 4. Release verification
+
+```bash
+curl https://your-latent-api.onrender.com/api/v1/ready
+```
+
+Then open the Vercel URL and verify signup, login, guest mode, CSV upload, dashboard analytics,
+and Copilot. In Vercel, `LATENT_API_ORIGIN` is server-only. Only variables beginning with
+`NEXT_PUBLIC_` are exposed to the browser.
 
 ### Container Deployment
 

@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: latent-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_JSON
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL_MODE
+        value: require
+      - key: DATABASE_POOL_SIZE
+        value: "2"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "3"
+      - key: RUN_MIGRATIONS_ON_STARTUP
+        value: "false"
+      - key: AUTH_SECRET_KEY
+        generateValue: true
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: AUTH_COOKIE_SAMESITE
+        value: lax
+      - key: CORS_ORIGINS
+        sync: false
+      - key: TRUSTED_HOSTS
+        sync: false
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      - key: API_DOCS_ENABLED
+        value: "false"
+      - key: REGIME_RUNTIME_FIT_ENABLED
+        value: "false"
+      - key: REQUIRE_VALIDATED_REGIME_MODEL
+        value: "false"
+      - key: NVIDIA_API_KEY
+        sync: false

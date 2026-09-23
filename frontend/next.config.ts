@@ -3,6 +3,21 @@ import path from 'node:path';
 import type { NextConfig } from 'next';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const latentApiOrigin = (() => {
+	const configured = process.env['LATENT_API_ORIGIN']?.trim();
+	if (!configured) return '';
+	try {
+		const url = new URL(configured);
+		if (isProduction && url.protocol !== 'https:') {
+			throw new Error('LATENT_API_ORIGIN must use HTTPS in production.');
+		}
+		return url.origin;
+	} catch (error) {
+		throw new Error(
+			`LATENT_API_ORIGIN must be an absolute backend origin: ${error instanceof Error ? error.message : 'invalid URL'}`
+		);
+	}
+})();
 const apiOrigin = (() => {
 	try {
 		return new URL(process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:8000/api/v1')
@@ -47,6 +62,15 @@ const nextConfig: NextConfig = {
 	output: 'standalone',
 	distDir: process.env['NEXT_DIST_DIR'] ?? '.next',
 	outputFileTracingRoot: path.join(__dirname),
+	async rewrites() {
+		if (!latentApiOrigin) return [];
+		return [
+			{
+				source: '/api/v1/:path*',
+				destination: `${latentApiOrigin}/api/v1/:path*`
+			}
+		];
+	},
 	async headers() {
 		return [{ source: '/:path*', headers: securityHeaders }];
 	}
