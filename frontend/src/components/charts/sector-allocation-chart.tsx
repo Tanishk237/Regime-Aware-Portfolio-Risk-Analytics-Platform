@@ -15,7 +15,9 @@ const colors = [
 	'var(--chart-5)',
 	'var(--positive)',
 	'var(--info)',
-	'var(--chart-4)'
+	'var(--chart-4)',
+	'var(--warning)',
+	'var(--negative)'
 ];
 
 type SectorTooltipProps = {

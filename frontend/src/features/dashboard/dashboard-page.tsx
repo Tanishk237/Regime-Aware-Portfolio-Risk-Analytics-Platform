@@ -376,7 +376,7 @@ function Dashboard({ portfolioId }: { portfolioId: string }) {
 					{chartsLoading ? (
 						<MetricGridSkeleton count={2} />
 					) : chartCumulative.length ? (
-						<SeriesLineChart data={chartCumulative} />
+						<SeriesLineChart data={chartCumulative} gradient />
 					) : (
 						<EmptyState
 							title="No return series available"

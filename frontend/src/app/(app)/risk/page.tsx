@@ -206,7 +206,7 @@ function RiskPage({ portfolioId }: { portfolioId: string }) {
 			<div className="grid gap-4 lg:grid-cols-2">
 				<ChartCard title="Cumulative returns">
 					{chartCumulative.length ? (
-						<SeriesLineChart data={chartCumulative} />
+						<SeriesLineChart data={chartCumulative} gradient />
 					) : (
 						<EmptyState title="No series" />
 					)}

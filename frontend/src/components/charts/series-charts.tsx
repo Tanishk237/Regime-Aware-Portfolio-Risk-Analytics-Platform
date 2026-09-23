@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import {
 	Area,
 	AreaChart,
@@ -51,13 +52,56 @@ export function SeriesLineChart({
 	data,
 	percent = true,
 	color = 'var(--chart-1)',
-	height = 240
+	height = 240,
+	gradient = false
 }: {
 	data: Point[];
 	percent?: boolean;
 	color?: string;
 	height?: number;
+	gradient?: boolean;
 }) {
+	const id = useId().replaceAll(':', '');
+	if (gradient) {
+		const fillId = `series-fill-${id}`;
+		const strokeId = `series-stroke-${id}`;
+		return (
+			<ResponsiveContainer width="100%" height={height}>
+				<AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+					<defs>
+						<linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+							<stop offset="0%" stopColor={color} stopOpacity={0.28} />
+							<stop offset="100%" stopColor={color} stopOpacity={0.02} />
+						</linearGradient>
+						<linearGradient id={strokeId} x1="0" y1="0" x2="1" y2="0">
+							<stop offset="0%" stopColor={color} />
+							<stop offset="100%" stopColor="var(--chart-2)" />
+						</linearGradient>
+					</defs>
+					<CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+					<XAxis dataKey="date" tickFormatter={shortDate} minTickGap={28} {...axisProps} />
+					<YAxis
+						tickFormatter={(value: number) =>
+							percent ? `${(value * 100).toFixed(0)}%` : value.toFixed(2)
+						}
+						{...axisProps}
+					/>
+					<Tooltip content={<TooltipBox percent={percent} />} />
+					<ReferenceLine y={0} stroke="var(--border)" />
+					<Area
+						type="monotone"
+						dataKey="value"
+						stroke={`url(#${strokeId})`}
+						strokeWidth={2}
+						fill={`url(#${fillId})`}
+						dot={false}
+						activeDot={{ r: 3, fill: color, strokeWidth: 0 }}
+					/>
+				</AreaChart>
+			</ResponsiveContainer>
+		);
+	}
+
 	return (
 		<ResponsiveContainer width="100%" height={height}>
 			<LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>

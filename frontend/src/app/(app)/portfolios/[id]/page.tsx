@@ -134,7 +134,7 @@ export default function PortfolioDetailPage() {
 						{cumulative.length === 0 ? (
 							<EmptyState title="Portfolio returns are not available yet." />
 						) : (
-							<SeriesLineChart data={cumulative} />
+							<SeriesLineChart data={cumulative} gradient />
 						)}
 					</ChartCard>
 					<div className="grid gap-4 lg:grid-cols-2">
