@@ -116,7 +116,7 @@ export function useHistoricalPrices(params: HistoricalPriceParams, enabled = tru
 	});
 }
 
-export function useLivePrices(tickers: string[], enabled = true) {
+export function useLivePrices(tickers: string[], enabled = true, refreshIntervalMs?: number) {
 	return useQuery({
 		queryKey: keys.livePrices(tickers),
 		queryFn: async () => {
@@ -126,6 +126,9 @@ export function useLivePrices(tickers: string[], enabled = true) {
 			});
 			return asArray<unknown>(asRecord(response)['prices']).map(adaptLivePrice);
 		},
-		enabled: enabled && tickers.length > 0
+		enabled: enabled && tickers.length > 0,
+		staleTime: 60_000,
+		refetchInterval: refreshIntervalMs,
+		refetchIntervalInBackground: false
 	});
 }

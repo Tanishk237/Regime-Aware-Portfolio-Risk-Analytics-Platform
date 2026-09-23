@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import { AppSidebar } from '@/components/layout/app-sidebar';
+import { PortfolioMarketTape } from '@/components/layout/portfolio-market-tape';
 import { TopBar } from '@/components/layout/top-bar';
 import { PageTransition } from '@/components/motion/page-transition';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
@@ -33,6 +34,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 				<AppSidebar />
 				<SidebarInset className="app-shell w-auto min-w-0 flex-1 overflow-x-hidden">
 					<TopBar />
+					<PortfolioMarketTape />
 					<main className="mx-auto w-full min-w-0 max-w-[1480px] flex-1 space-y-6 overflow-x-hidden p-4 sm:p-5 lg:p-7">
 						<PageTransition>{children}</PageTransition>
 					</main>
