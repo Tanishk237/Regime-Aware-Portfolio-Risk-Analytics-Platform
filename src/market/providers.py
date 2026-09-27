@@ -42,6 +42,17 @@ class MarketDataProvider(ABC):
     ) -> dict:
         raise NotImplementedError
 
+    def get_live_prices(
+        self,
+        tickers: list[str],
+        *,
+        include_name: bool = False,
+    ) -> list[dict]:
+        return [
+            self.get_live_price(ticker, include_name=include_name)
+            for ticker in tickers
+        ]
+
     @abstractmethod
     def get_india_vix(
         self,
@@ -112,6 +123,56 @@ class YahooFinanceProvider(MarketDataProvider):
             return payload
 
         return self._retry(fetch)
+
+    def get_live_prices(
+        self,
+        tickers: list[str],
+        *,
+        include_name: bool = False,
+    ) -> list[dict]:
+        normalized = list(dict.fromkeys(tickers))
+        if not normalized:
+            return []
+        if len(normalized) == 1:
+            return [
+                self.get_live_price(normalized[0], include_name=include_name)
+            ]
+
+        yf = _yfinance()
+        history = self._retry(
+            lambda: yf.download(
+                normalized,
+                period="5d",
+                interval="1d",
+                auto_adjust=True,
+                progress=False,
+                threads=True,
+            )
+        )
+        if history.empty or "Close" not in history.columns.get_level_values(0):
+            raise MarketDataProviderError("No live prices were returned.")
+
+        close = history["Close"]
+        records = []
+        for ticker in normalized:
+            if ticker not in close.columns:
+                continue
+            series = close[ticker].dropna()
+            if series.empty:
+                continue
+            record = {
+                "ticker": ticker,
+                "price": float(series.iloc[-1]),
+                "name": None,
+                "as_of": series.index[-1].date(),
+            }
+            if include_name:
+                info = self._retry(lambda ticker=ticker: yf.Ticker(ticker).get_info())
+                record["name"] = info.get("longName") or info.get("shortName")
+            records.append(record)
+        if not records:
+            raise MarketDataProviderError("No live prices were returned.")
+        return records
 
     def get_india_vix(
         self,

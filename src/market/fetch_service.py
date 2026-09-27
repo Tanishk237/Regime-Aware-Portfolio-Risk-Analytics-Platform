@@ -10,6 +10,7 @@ from fastapi import status
 from src.api.errors import AppError
 from src.ingestion.fii_dii_data import FIIDIIDataFetcher
 from src.ingestion.vix_data import VIXDataFetcher
+from src.market.providers import MarketDataProviderError
 from src.market.validators import MarketDataValidator
 
 
@@ -127,17 +128,39 @@ class MarketDataFetchService:
         *,
         include_name: bool = False,
     ) -> list[dict]:
-        records = []
+        normalized_tickers = self._normalize_tickers(tickers)
+        records_by_ticker: dict[str, dict] = {}
+        missing_tickers = []
+        cache_keys = {}
 
-        for ticker in self._normalize_tickers(tickers):
+        for ticker in normalized_tickers:
             cache_key = self._cache_key("live", [ticker], None, None, include_name)
+            cache_keys[ticker] = cache_key
             cached = self.cache.get(cache_key)
             if cached is not None:
                 logger.info("Market data cache hit for %s", cache_key)
-                records.append(cached)
+                records_by_ticker[ticker] = cached
                 continue
+            missing_tickers.append(ticker)
+
+        provider_records: dict[str, dict] = {}
+        provider_error: Exception | None = None
+        if missing_tickers:
             try:
-                record = self.provider.get_live_price(ticker, include_name=include_name)
+                provider_records = {
+                    str(record.get("ticker")): record
+                    for record in self.provider.get_live_prices(
+                        missing_tickers,
+                        include_name=include_name,
+                    )
+                    if record.get("ticker")
+                }
+            except Exception as exc:
+                provider_error = exc
+
+        for ticker in missing_tickers:
+            record = provider_records.get(ticker)
+            if record is not None:
                 as_of = self._to_date(record.get("as_of") or date.today())
                 record = {
                     **record,
@@ -145,26 +168,36 @@ class MarketDataFetchService:
                     "as_of": as_of,
                     "is_stale": self._quote_is_stale(as_of),
                 }
-                self.cache.set(cache_key, record, self.cache_ttl_seconds)
-                records.append(record)
-            except Exception as exc:
-                fallback = self._get_latest_stored_price(ticker)
-                if fallback is not None:
-                    logger.warning("Live provider failed; serving latest stored close for %s. %s", ticker, exc)
-                    records.append(
-                        {
-                            "ticker": ticker,
-                            "price": fallback["close"],
-                            "name": None,
-                            "source": f"stored:{fallback.get('data_source') or 'unknown'}",
-                            "as_of": fallback["date"],
-                            "is_stale": self._quote_is_stale(fallback["date"]),
-                        }
-                    )
-                    continue
-                raise self._market_data_error(f"Unable to fetch live price for {ticker}.", exc) from exc
+                self.cache.set(cache_keys[ticker], record, self.cache_ttl_seconds)
+                records_by_ticker[ticker] = record
+                continue
 
-        return records
+            fallback = self._get_latest_stored_price(ticker)
+            if fallback is not None:
+                logger.warning(
+                    "Live provider failed; serving latest stored close for %s. %s",
+                    ticker,
+                    provider_error or "provider returned no quote",
+                )
+                records_by_ticker[ticker] = {
+                    "ticker": ticker,
+                    "price": fallback["close"],
+                    "name": None,
+                    "source": f"stored:{fallback.get('data_source') or 'unknown'}",
+                    "as_of": fallback["date"],
+                    "is_stale": self._quote_is_stale(fallback["date"]),
+                }
+                continue
+
+            error = provider_error or MarketDataProviderError(
+                f"The provider returned no live price for {ticker}."
+            )
+            raise self._market_data_error(
+                f"Unable to fetch live price for {ticker}.",
+                error,
+            ) from error
+
+        return [records_by_ticker[ticker] for ticker in normalized_tickers]
 
     @staticmethod
     def _quote_is_stale(as_of: date) -> bool:

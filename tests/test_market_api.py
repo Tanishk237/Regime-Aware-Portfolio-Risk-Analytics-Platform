@@ -407,6 +407,23 @@ class CountingProvider(MarketDataProvider):
         }
 
 
+class BatchCountingProvider(CountingProvider):
+    def __init__(self):
+        super().__init__()
+        self.batch_calls = 0
+
+    def get_live_prices(self, tickers, include_name=False):
+        self.batch_calls += 1
+        return [
+            {
+                "ticker": ticker,
+                "price": 100.0 + index,
+                "name": f"{ticker} Limited" if include_name else None,
+            }
+            for index, ticker in enumerate(tickers)
+        ]
+
+
 class FailingProvider(MarketDataProvider):
     name = "failing"
 
@@ -436,6 +453,27 @@ def test_live_prices_use_cache_before_provider(tmp_path):
 
             assert first == second
             assert provider.live_calls == 1
+        finally:
+            db.close()
+
+
+def test_live_prices_batch_uncached_tickers_in_one_provider_call(tmp_path):
+    with build_client(tmp_path) as client:
+        db = client.app.state.session_factory()
+        provider = BatchCountingProvider()
+        try:
+            records = MarketDataService(
+                db,
+                provider=provider,
+                cache=InMemoryMarketDataCache(),
+            ).get_live_prices(["RELIANCE.NS", "INFY.NS"])
+
+            assert [record["ticker"] for record in records] == [
+                "RELIANCE.NS",
+                "INFY.NS",
+            ]
+            assert provider.batch_calls == 1
+            assert provider.live_calls == 0
         finally:
             db.close()
 
