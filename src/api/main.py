@@ -58,6 +58,7 @@ def create_app(
         settings.database_url,
         pool_size=settings.database_pool_size,
         max_overflow=settings.database_max_overflow,
+        connect_timeout_seconds=settings.database_connect_timeout_seconds,
         pool_timeout_seconds=settings.database_pool_timeout_seconds,
         pool_recycle_seconds=settings.database_pool_recycle_seconds,
         ssl_mode=settings.database_ssl_mode,
@@ -99,11 +100,11 @@ def create_app(
             finally:
                 db.close()
 
-        run_maintenance()
         maintenance_scheduler = BackgroundScheduler(
             name="lifecycle-maintenance",
             interval_seconds=settings.guest_cleanup_interval_seconds,
             job=run_maintenance,
+            run_immediately=True,
         )
         maintenance_scheduler.start()
         app.state.maintenance_scheduler = maintenance_scheduler

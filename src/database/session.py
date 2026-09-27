@@ -17,6 +17,7 @@ def build_engine(
     *,
     pool_size: int = 5,
     max_overflow: int = 10,
+    connect_timeout_seconds: int = 10,
     pool_timeout_seconds: int = 30,
     pool_recycle_seconds: int = 1800,
     ssl_mode: str = "disable",
@@ -42,11 +43,13 @@ def build_engine(
 
     if database_url.startswith("postgresql"):
         connect_args["sslmode"] = ssl_mode
+        connect_args["connect_timeout"] = connect_timeout_seconds
         engine_kwargs.update(
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_timeout=pool_timeout_seconds,
             pool_recycle=pool_recycle_seconds,
+            pool_use_lifo=True,
         )
 
     engine = create_engine(database_url, **engine_kwargs)

@@ -15,10 +15,12 @@ class BackgroundScheduler:
         name: str,
         interval_seconds: int,
         job: Callable[[], None],
+        run_immediately: bool = False,
     ):
         self.name = name
         self.interval_seconds = interval_seconds
         self.job = job
+        self.run_immediately = run_immediately
         self._stop = Event()
         self._thread: Thread | None = None
 
@@ -34,8 +36,13 @@ class BackgroundScheduler:
             self._thread.join(timeout=5)
 
     def _run(self) -> None:
+        if self.run_immediately and not self._stop.is_set():
+            self._run_job()
         while not self._stop.wait(self.interval_seconds):
-            try:
-                self.job()
-            except Exception:
-                logger.exception("Scheduled job failed", extra={"job": self.name})
+            self._run_job()
+
+    def _run_job(self) -> None:
+        try:
+            self.job()
+        except Exception:
+            logger.exception("Scheduled job failed", extra={"job": self.name})
