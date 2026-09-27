@@ -59,6 +59,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
 	reactStrictMode: true,
 	poweredByHeader: false,
+	compress: true,
 	output: 'standalone',
 	distDir: process.env['NEXT_DIST_DIR'] ?? '.next',
 	outputFileTracingRoot: path.join(__dirname),
@@ -72,7 +73,18 @@ const nextConfig: NextConfig = {
 		];
 	},
 	async headers() {
-		return [{ source: '/:path*', headers: securityHeaders }];
+		return [
+			{ source: '/:path*', headers: securityHeaders },
+			{
+				source: '/brand/:path*',
+				headers: [
+					{
+						key: 'Cache-Control',
+						value: 'public, max-age=86400, stale-while-revalidate=604800'
+					}
+				]
+			}
+		];
 	}
 };
 

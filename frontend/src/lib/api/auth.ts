@@ -30,7 +30,7 @@ export function createGuestSession() {
 }
 
 export function me() {
-	return api.get<AuthUser>('/auth/me');
+	return api.get<AuthUser>('/auth/me', undefined, undefined, 8_000);
 }
 
 export function logout() {

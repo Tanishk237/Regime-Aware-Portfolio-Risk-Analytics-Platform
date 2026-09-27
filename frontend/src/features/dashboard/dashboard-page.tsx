@@ -10,11 +10,10 @@ import {
 	ShieldCheck,
 	Upload
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 
 import { ChartCard, SectionCard } from '@/components/charts/chart-card';
-import { SectorAllocationChart } from '@/components/charts/sector-allocation-chart';
-import { SeriesAreaChart, SeriesLineChart } from '@/components/charts/series-charts';
 import { DataTable, type Column } from '@/components/common/data-table';
 import { MetricCard } from '@/components/common/metric-card';
 import { EmptyState, ErrorState, MetricGridSkeleton } from '@/components/common/states';
@@ -37,6 +36,22 @@ import { cn } from '@/lib/utils';
 
 import { DashboardGuide } from './dashboard-guide';
 import { PortfolioSignal, RegimeStateRail } from './dashboard-signals';
+
+const SectorAllocationChart = dynamic(
+	() =>
+		import('@/components/charts/sector-allocation-chart').then(
+			(module) => module.SectorAllocationChart
+		),
+	{ ssr: false, loading: () => <Skeleton className="h-56 w-full" /> }
+);
+const SeriesLineChart = dynamic(
+	() => import('@/components/charts/series-charts').then((module) => module.SeriesLineChart),
+	{ ssr: false, loading: () => <Skeleton className="h-60 w-full" /> }
+);
+const SeriesAreaChart = dynamic(
+	() => import('@/components/charts/series-charts').then((module) => module.SeriesAreaChart),
+	{ ssr: false, loading: () => <Skeleton className="h-56 w-full" /> }
+);
 
 export default function DashboardPage() {
 	return (

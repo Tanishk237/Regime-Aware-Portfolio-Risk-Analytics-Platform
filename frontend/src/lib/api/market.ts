@@ -117,17 +117,23 @@ export function useHistoricalPrices(params: HistoricalPriceParams, enabled = tru
 }
 
 export function useLivePrices(tickers: string[], enabled = true, refreshIntervalMs?: number) {
+	const staleTime = Math.max(refreshIntervalMs ?? 5 * 60_000, 60_000);
 	return useQuery({
 		queryKey: keys.livePrices(tickers),
-		queryFn: async () => {
-			const response = await api.get<unknown>('/market/live-prices', {
-				tickers: tickers.join(','),
-				include_name: true
-			});
+		queryFn: async ({ signal }) => {
+			const response = await api.get<unknown>(
+				'/market/live-prices',
+				{
+					tickers: tickers.join(','),
+					include_name: false
+				},
+				signal
+			);
 			return asArray<unknown>(asRecord(response)['prices']).map(adaptLivePrice);
 		},
 		enabled: enabled && tickers.length > 0,
-		staleTime: 60_000,
+		staleTime,
+		gcTime: 15 * 60_000,
 		refetchInterval: refreshIntervalMs,
 		refetchIntervalInBackground: false
 	});

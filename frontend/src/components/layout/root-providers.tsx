@@ -16,9 +16,11 @@ export function RootProviders({ children }: { children: React.ReactNode }) {
 			new QueryClient({
 				defaultOptions: {
 					queries: {
-						staleTime: 30_000,
-						gcTime: 5 * 60_000,
+						staleTime: 2 * 60_000,
+						gcTime: 15 * 60_000,
 						refetchOnWindowFocus: false,
+						refetchOnReconnect: true,
+						retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 4_000),
 						retry: (failureCount, error) => {
 							if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
 								return error.status === 408 || error.status === 429 ? failureCount < 1 : false;

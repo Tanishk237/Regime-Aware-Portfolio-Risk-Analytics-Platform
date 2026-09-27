@@ -8,16 +8,19 @@ import { keys } from './query-keys';
 export function useHealth() {
 	return useQuery({
 		queryKey: keys.health,
-		queryFn: () => api.get<HealthStatus>('/health'),
+		queryFn: ({ signal }) => api.get<HealthStatus>('/health', undefined, signal, 5_000),
 		retry: 0,
-		refetchInterval: 60_000
+		staleTime: 30_000,
+		refetchInterval: 60_000,
+		refetchIntervalInBackground: false
 	});
 }
 
 export function useVersion() {
 	return useQuery({
 		queryKey: keys.version,
-		queryFn: () => api.get<VersionInfo>('/version'),
-		retry: 0
+		queryFn: ({ signal }) => api.get<VersionInfo>('/version', undefined, signal, 5_000),
+		retry: 0,
+		staleTime: Number.POSITIVE_INFINITY
 	});
 }

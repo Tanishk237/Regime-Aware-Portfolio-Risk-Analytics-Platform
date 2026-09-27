@@ -137,6 +137,7 @@ async function request<T>(
 		body?: unknown;
 		formData?: FormData | undefined;
 		signal?: AbortSignal | undefined;
+		timeoutMs?: number | undefined;
 	} = {}
 ): Promise<T> {
 	const controller = new AbortController();
@@ -144,10 +145,11 @@ async function request<T>(
 	const abortFromCaller = () => controller.abort();
 	if (opts.signal?.aborted) controller.abort();
 	else if (opts.signal) opts.signal.addEventListener('abort', abortFromCaller, { once: true });
+	const timeoutMs = opts.timeoutMs ?? API_TIMEOUT_MS;
 	const timeout = globalThis.setTimeout(() => {
 		timedOut = true;
 		controller.abort();
-	}, API_TIMEOUT_MS);
+	}, timeoutMs);
 	try {
 		const init: RequestInit = {
 			method,
@@ -185,8 +187,8 @@ async function request<T>(
 }
 
 export const api = {
-	get: <T>(path: string, params?: QueryParams, signal?: AbortSignal) =>
-		request<T>('GET', path, { params, signal }),
+	get: <T>(path: string, params?: QueryParams, signal?: AbortSignal, timeoutMs?: number) =>
+		request<T>('GET', path, { params, signal, timeoutMs }),
 	post: <T>(path: string, body?: unknown, params?: QueryParams) =>
 		request<T>('POST', path, { body, params }),
 	put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
