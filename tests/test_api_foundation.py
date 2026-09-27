@@ -165,6 +165,7 @@ def test_staging_rejects_unsafe_deployment_defaults():
         Settings(
             environment="staging",
             database_url="sqlite:///./data/staging.db",
+            auth_secret_key="change-me-in-production",
         )
 
 

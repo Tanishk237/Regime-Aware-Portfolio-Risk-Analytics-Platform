@@ -77,7 +77,7 @@ function MarketTape() {
 		<div className="border-border/70 bg-card/70 group relative overflow-hidden border-b py-2 backdrop-blur-xl">
 			<div className="from-card pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r to-transparent" />
 			<div className="from-card pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l to-transparent" />
-			<div className="auth-market-tape flex w-max items-center gap-7 px-4">
+			<div className="market-tape-track flex w-max items-center gap-7 px-4">
 				{rows.map((item, index) => (
 					<div
 						key={`${item.ticker}-${index}`}

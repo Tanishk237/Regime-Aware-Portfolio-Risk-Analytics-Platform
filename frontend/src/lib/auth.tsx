@@ -196,11 +196,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 				// Local cleanup still ends the browser session if the network is unavailable.
 			}
 		} else {
-			try {
-				await logout();
-			} catch {
-				// Local cleanup still happens if the backend is unreachable.
-			}
+			// Keep the authenticated UI intact until the server revokes the HttpOnly cookie.
+			await logout();
 		}
 		clearLegacyAccessToken();
 		clearStoredUser();
