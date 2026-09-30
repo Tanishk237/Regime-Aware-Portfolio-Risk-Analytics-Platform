@@ -92,7 +92,10 @@ async def validation_error_handler(
         code="VALIDATION_ERROR",
         message="Request validation failed.",
         status_code=422,
-        details=exc.errors(),
+        details=[
+            {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
+            for error in exc.errors()
+        ],
     )
 
 

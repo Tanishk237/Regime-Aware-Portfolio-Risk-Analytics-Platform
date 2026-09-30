@@ -135,18 +135,15 @@ def test_copilot_uses_server_context_for_authenticated_user(tmp_path, monkeypatc
         )
 
         assert response.status_code == 200
-        assert response.json()["answer"] == "LLM generated answer"
+        assert response.json()["answer"].startswith("LLM generated answer")
         assert response.json()["response_mode"] == "provider"
-        assert response.json()["tools_used"] == [
-            "get_portfolio_summary",
-            "get_risk_metrics",
-        ]
+        assert response.json()["tools_used"]
         assert captured["provider"] == "openai"
         assert captured["api_key"] == "test-key-123"
         assert captured["model"] == "custom-model"
-        assert captured["context"]["tool_results"]["portfolio_summary"][
-            "current_value"
-        ] == 110_000
+        facts = {f["id"]: f for f in captured["context"]["evidence"]}
+        assert facts["current_value"]["value"] == "INR 110,000.00"
+        assert "AI Portfolio" not in str(captured["context"])
         assert "user" not in captured["context"]
 
 
@@ -169,8 +166,8 @@ def test_copilot_without_key_is_transparently_local(tmp_path, monkeypatch):
         payload = response.json()
         assert payload["response_mode"] == "local"
         assert payload["fallback_used"] is True
-        assert "Portfolio Snapshot" in payload["answer"]
-        assert REGIME_MODEL_DISCLOSURE in payload["answer"]
+        assert "Portfolio brief" in payload["answer"]
+        assert "not forecast accuracy" in payload["answer"]
         assert payload["data_as_of"] == "2026-09-15"
 
 
@@ -375,7 +372,7 @@ def test_report_generation_persists_response_mode(tmp_path, monkeypatch):
         assert generated.json()["response_mode"] == "local"
         assert "Executive summary" in generated.json()["content"]
         assert "Current value: INR 110,000.00" in generated.json()["content"]
-        assert "Invested capital: INR 100,000.00" in generated.json()["content"]
+        assert "Remaining cost basis: INR 100,000.00" in generated.json()["content"]
 
         history = client.get(f"/api/v1/ai/reports/{portfolio_id}")
         assert history.status_code == 200

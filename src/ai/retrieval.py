@@ -15,6 +15,10 @@ REGIME_MODEL_DISCLOSURE = (
     "hidden state. It is not the probability of a future market move and is not a measured "
     "out-of-sample prediction accuracy. Predictive accuracy remains unverified until the model "
     "is evaluated with time-ordered walk-forward tests and independently defined regime labels."
+    " Rule-based fallback has no statistical confidence. Summary total_return means open-holding "
+    "gain divided by remaining cost basis, excluding realized gains. Risk series are a hypothetical "
+    "daily-rebalanced basket of current holdings, not actual investor performance. "
+    "Risk-review scores are uncalibrated heuristics, never a safety rating or success probability."
 )
 
 
@@ -57,9 +61,10 @@ class LocalContextRetriever:
         disclosure = next(
             document for document in documents if document.metadata["source"] == "model_disclosure"
         )
-        candidates = [document for document in documents if document is not disclosure]
+        mandatory = [disclosure, *[d for d in documents if d.metadata["source"] == "data_quality"]]
+        candidates = [document for document in documents if document not in mandatory]
         ranked = self._rank(query, candidates)
-        selected = [disclosure, *ranked[: self.top_k - 1]]
+        selected = [*mandatory, *ranked[: max(1, self.top_k - len(mandatory))]]
 
         rendered: list[str] = []
         selected_sources: list[str] = []
@@ -67,14 +72,16 @@ class LocalContextRetriever:
         for document in selected:
             source = str(document.metadata["source"])
             block = f"[{source}]\n{document.page_content.strip()}"
-            remaining = self.character_budget - used
+            remaining = self.character_budget - used - (2 if rendered else 0)
             if remaining <= 0:
                 break
             if len(block) > remaining:
+                if source.startswith("evidence_"):
+                    continue
                 block = block[: max(0, remaining - 1)].rstrip() + "…"
             rendered.append(block)
             selected_sources.append(source)
-            used += len(block)
+            used += len(block) + (2 if len(rendered) > 1 else 0)
 
         compact_context = "\n\n".join(rendered)
         estimated_tokens = math.ceil((len(query) + len(compact_context)) / 4)
@@ -108,6 +115,14 @@ class LocalContextRetriever:
                 metadata={"source": "model_disclosure"},
             )
         ]
+        if "evidence" in context:
+            if context.get("data_quality"):
+                documents.append(Document(page_content=self._json(context["data_quality"]), metadata={"source": "data_quality"}))
+            documents.extend(
+                Document(page_content=self._json(fact), metadata={"source": f"evidence_{fact['id']}"})
+                for fact in context["evidence"]
+            )
+            return documents
         data_as_of = context.get("data_as_of")
         if data_as_of:
             documents.append(

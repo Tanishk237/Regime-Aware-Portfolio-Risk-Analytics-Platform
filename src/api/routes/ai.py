@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import asyncio
+import logging
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from src.ai import CopilotAIService
+from src.ai.evidence import build_evidence, data_checks, local_brief, provider_context
+from src.ai.safety import POLICY_VERSION, clean_user_text, safe_history
 from src.api.dependencies import get_current_user
 from src.api.errors import AppError
 from src.auth.workload import enforce_workload_rate_limit
@@ -28,6 +33,7 @@ from src.portfolio.portfolio_service import PortfolioService
 
 
 router = APIRouter(prefix="/ai")
+logger = logging.getLogger(__name__)
 
 
 def _enforce_ai_rate_limit(
@@ -111,25 +117,22 @@ async def _generate_with_model_fallback(
     requested_model: str | None,
     timeout_seconds: float = 30.0,
 ) -> dict:
-    models = _provider_model_candidates(provider, requested_model, settings)
+    models = _provider_model_candidates(provider, requested_model, settings)[:2]
     last_error: AppError | None = None
-    for index, model in enumerate(models):
-        try:
-            return await _copilot_service(
-                settings,
-                timeout_seconds=timeout_seconds,
-            ).generate(
-                provider=provider,
-                api_key=api_key,
-                prompt=prompt,
-                context=context,
-                history=history,
-                model=model,
-            )
-        except AppError as exc:
-            last_error = exc
-            if index == len(models) - 1 or not _can_retry_with_another_model(exc):
-                raise
+    try:
+        async with asyncio.timeout(timeout_seconds):
+            for index, model in enumerate(models):
+                try:
+                    return await _copilot_service(settings, timeout_seconds=timeout_seconds).generate(
+                        provider=provider, api_key=api_key, prompt=prompt,
+                        context=context, history=history, model=model,
+                    )
+                except AppError as exc:
+                    last_error = exc
+                    if index == len(models) - 1 or not _can_retry_with_another_model(exc):
+                        raise
+    except TimeoutError as exc:
+        raise AppError("The AI provider took too long to respond.", code="AI_TIMEOUT", status_code=504) from exc
     if last_error is not None:
         raise last_error
     raise AppError(
@@ -160,7 +163,14 @@ async def copilot_chat(
     settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
 ) -> CopilotChatResponse:
+    started = perf_counter()
     _enforce_ai_rate_limit(db, request=request, user=user, settings=settings)
+    # Ownership is checked before analytics or any external provider call.
+    PortfolioService(db).get_portfolio(user, payload.portfolio_id)
+    prompt = clean_user_text(payload.prompt)
+    history = safe_history([message.model_dump() for message in payload.history])
+    if payload.task == "brief":
+        prompt = "Explain portfolio return, historical risk, market state and sector concentration. What should I review first?"
     builder = PortfolioIntelligenceContextService(
         db,
         market_data_service=market_service(db, settings),
@@ -172,13 +182,16 @@ async def copilot_chat(
     )
     context = builder.build(user, payload.portfolio_id)
     recommendation_service = RecommendationService(db)
-    recommendations = [
-        recommendation_service.serialize(item)
-        for item in recommendation_service.generate(user, payload.portfolio_id, context)
-    ]
-    tools_used, tool_results = builder.tool_results(context, payload.prompt)
-    insight = PortfolioInsightService()
-    local_answer = insight.local_answer(context, payload.prompt, recommendations, tools_used)
+    recommendations = [recommendation_service.serialize(item) for item in recommendation_service.generate(user, payload.portfolio_id, context)]
+    evidence = build_evidence(context, recommendations)
+    local_answer, citations, next_action = local_brief(evidence, prompt)
+    checks = data_checks(context)
+    if payload.task == "data_check":
+        local_answer = "## Data readiness\n\nThese are local checks of your stored data, not an AI accuracy or security rating.\n\n" + "\n\n".join(
+            f"### {check['label']}\n{check['detail']}" for check in checks
+        )
+        citations = []
+        next_action = {"label": "Review market data", "href": "/market"}
     selected_model = _provider_model(payload.provider, payload.model, settings)
     provider_key = _provider_key(payload.provider, payload.api_key, settings)
     result = {
@@ -189,37 +202,45 @@ async def copilot_chat(
         "response_mode": "local",
         "provider_error": None,
         "retrieval": None,
+        "citations": citations,
+        "next_action": next_action,
     }
-    if provider_key:
+    output_status = "local"
+    if provider_key and payload.task != "data_check":
         try:
             provider_result = await _generate_with_model_fallback(
                 settings=settings,
                 provider=payload.provider,
                 api_key=provider_key,
-                prompt=payload.prompt,
-                context={
-                    "data_as_of": context.get("data_as_of"),
-                    "tool_results": tool_results,
-                    "recommendations": recommendations,
-                    "warnings": context.get("warnings", []),
-                },
-                history=[message.model_dump() for message in payload.history],
+                prompt=prompt,
+                context=provider_context(context, recommendations),
+                history=history,
                 requested_model=payload.model,
             )
             result.update(provider_result)
             result["response_mode"] = "provider"
             result["fallback_used"] = False
+            output_status = "evidence_checked"
         except AppError as exc:
             result["response_mode"] = "local_fallback"
             result["provider_error"] = getattr(exc, "message", str(exc))
-    elif payload.provider == "nvidia":
+            output_status = "rejected" if exc.code == "AI_OUTPUT_REJECTED" else "local"
+    elif payload.provider == "nvidia" and payload.task != "data_check":
         result["response_mode"] = "local_fallback"
         result["provider_error"] = "NVIDIA AI is not configured on this server."
+    needs_review = [check["label"] for check in checks if check["status"] == "needs_review"]
+    if needs_review and payload.task != "data_check":
+        result["answer"] += "\n\n### Data to review\n" + "; ".join(needs_review) + ". Use Check my data for details."
+    elapsed_ms = int((perf_counter() - started) * 1000)
+    logger.info("ai_response policy=%s mode=%s output=%s elapsed_ms=%d", POLICY_VERSION, result["response_mode"], output_status, elapsed_ms)
     return CopilotChatResponse(
         **result,
-        tools_used=tools_used,
-        citations=context["citations"],
+        tools_used=sorted({item["source"] for item in result["citations"]}),
         data_as_of=context.get("data_as_of"),
+        data_checks=checks if payload.task == "data_check" else [],
+        safety={"policy_version": POLICY_VERSION, "output_status": output_status,
+                "note": "Figures and evidence references are checked. AI wording can still be wrong; review the sources before acting."},
+        elapsed_ms=elapsed_ms,
     )
 
 
@@ -281,6 +302,9 @@ async def generate_report(
     ]
     insight = PortfolioInsightService()
     content = insight.report(context, payload.report_type, recommendations)
+    needs_review = [check["label"] for check in data_checks(context) if check["status"] == "needs_review"]
+    if needs_review:
+        content += "\n\n## Data to review\n" + "; ".join(needs_review) + "."
     provider = None
     model = None
     response_mode = "local"
@@ -292,18 +316,16 @@ async def generate_report(
                 provider=payload.provider,
                 api_key=provider_key,
                 prompt=(
-                    f"Create a concise {payload.report_type}. Preserve every supplied number, "
-                    "include data provenance, and do not provide individualized financial advice."
+                    f"Write a concise interpretation for a {payload.report_type}. "
+                    "Reference relevant evidence IDs; the server inserts the exact figures. "
+                    "Do not provide individualized financial advice."
                 ),
-                context={
-                    "deterministic_report": content,
-                    "citations": context["citations"],
-                    "warnings": context["warnings"],
-                },
+                context=provider_context(context, recommendations),
                 history=[],
                 requested_model=payload.model,
             )
-            content = generated["answer"]
+            content += "\n\n## AI interpretation\n\n" + generated["answer"]
+            content += "\n\nAI wording may be incorrect. The figures above are generated by the backend, not the language model."
             provider = generated["provider"]
             model = generated["model"]
             response_mode = "provider"
