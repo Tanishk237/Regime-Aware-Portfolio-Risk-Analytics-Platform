@@ -79,6 +79,17 @@ export type PortfolioSummary = {
 export type SeriesPoint = { date: string; value: number };
 
 export type RiskAnalytics = {
+	review?: RiskReview;
+	methodology?: {
+		basis: string;
+		description: string;
+		start_date: string;
+		end_date: string;
+		observations: number;
+		confidence_level: number;
+		risk_free_rate: number;
+		rolling_window: number;
+	};
 	success?: boolean;
 	portfolio_id?: string;
 	as_of?: string;
@@ -110,6 +121,18 @@ export type RegimeHistoryRow = {
 	label?: string;
 	regime_label?: string;
 	probability?: number;
+};
+
+export type RiskReview = {
+	score: number | null;
+	status: 'complete' | 'unavailable';
+	category: string;
+	calculation_version: string;
+	observation_count: number;
+	minimum_observations: number;
+	missing_inputs: string[];
+	components: Array<{ key: string; label: string; value: number; points: number; rule: string }>;
+	limitation: string;
 };
 
 export type RegimeAnalytics = {
@@ -236,6 +259,7 @@ export type FeatureMatrix = {
 };
 
 export type MarketSnapshot = {
+	warnings: string[];
 	historical_prices: HistoricalPricePoint[];
 	live_prices: LivePricePoint[];
 	vix: VixPoint[];

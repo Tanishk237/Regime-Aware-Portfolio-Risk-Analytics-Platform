@@ -28,11 +28,11 @@ export function usePortfolio(id?: string) {
 	});
 }
 
-export function useSummary(id?: string) {
+export function useSummary(id?: string, enabled = true) {
 	return useQuery({
 		queryKey: keys.summary(id ?? 'none'),
 		queryFn: async () => adaptSummary(await api.get<unknown>(`/portfolio/${id}/summary`)),
-		enabled: Boolean(id)
+		enabled: Boolean(id) && enabled
 	});
 }
 

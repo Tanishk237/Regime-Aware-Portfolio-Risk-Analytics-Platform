@@ -24,6 +24,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger
+} from '@/components/ui/accordion';
 import { errorMessage } from '@/lib/api';
 import { fetchPortfolioIntelligence } from '@/lib/api/intelligence';
 import type { CsvUploadResult } from '@/lib/api/portfolio';
@@ -53,6 +59,8 @@ export default function UploadPage() {
 	const resolveCsv = useCsvResolve();
 	const demoPortfolio = useDemoPortfolio();
 	const inputRef = useRef<HTMLInputElement>(null);
+	const fileVersion = useRef(0);
+	const [previewError, setPreviewError] = useState<string | null>(null);
 	const [file, setFile] = useState<File | null>(null);
 	const [parsed, setParsed] = useState<CsvPreview | null>(null);
 	const [resolution, setResolution] = useState<CsvResolution | null>(null);
@@ -69,15 +77,19 @@ export default function UploadPage() {
 	const activeStep = result ? 3 : file ? 2 : 1;
 
 	const clearFile = () => {
+		fileVersion.current += 1;
+		setPreviewError(null);
 		setFile(null);
 		setParsed(null);
 		setResolution(null);
 		setResult(null);
 		setIntelligence(null);
+		setIntelligenceLoading(false);
 		if (inputRef.current) inputRef.current.value = '';
 	};
 
 	const accept = async (next: File) => {
+		if (upload.isPending) return;
 		if (!next.name.toLowerCase().endsWith('.csv')) {
 			toast.error('Please select a .csv file.');
 			return;
@@ -87,6 +99,8 @@ export default function UploadPage() {
 			return;
 		}
 
+		const version = ++fileVersion.current;
+		setPreviewError(null);
 		setFile(next);
 		setResult(null);
 		setIntelligence(null);
@@ -95,6 +109,7 @@ export default function UploadPage() {
 		if (!name.trim()) setName(next.name.replace(/\.csv$/i, '').replace(/[-_]/g, ' '));
 		try {
 			const nextParsed = await preview.mutateAsync(next);
+			if (version !== fileVersion.current) return;
 			setParsed(nextParsed);
 			if (nextParsed.valid) toast.success(`${next.name} is validated and ready to import.`);
 			else
@@ -102,15 +117,18 @@ export default function UploadPage() {
 					`Review ${nextParsed.errors.length} CSV validation issue${nextParsed.errors.length === 1 ? '' : 's'}.`
 				);
 		} catch (error) {
-			setFile(null);
+			if (version !== fileVersion.current) return;
+			setPreviewError(errorMessage(error));
 			toast.error(errorMessage(error));
 		}
 	};
 
 	const resolveIssues = async () => {
 		if (!file) return;
+		const version = fileVersion.current;
 		try {
 			const repaired = await resolveCsv.mutateAsync(file);
+			if (version !== fileVersion.current) return;
 			setResolution(repaired);
 			setParsed(repaired.report);
 			if (repaired.changes.length) {
@@ -138,13 +156,14 @@ export default function UploadPage() {
 	};
 
 	const submit = async () => {
-		if (!file || !parsed?.valid) return;
+		if (!file || !parsed?.valid || upload.isPending) return;
 		if (!name.trim()) {
 			toast.error('Portfolio name is required.');
 			return;
 		}
 
 		const formData = new FormData();
+		const version = fileVersion.current;
 		formData.append('name', name.trim());
 		formData.append('description', description.trim());
 		formData.append('base_currency', baseCurrency.trim().toUpperCase() || 'INR');
@@ -158,9 +177,18 @@ export default function UploadPage() {
 			toast.success(`${data.portfolio.name} was created successfully.`);
 			setIntelligenceLoading(true);
 			void fetchPortfolioIntelligence(queryClient, data.portfolio.id)
-				.then(setIntelligence)
-				.catch(() => undefined)
-				.finally(() => setIntelligenceLoading(false));
+				.then((result) => {
+					if (version === fileVersion.current) setIntelligence(result);
+				})
+				.catch(() => {
+					if (version === fileVersion.current)
+						toast.warning(
+							'Your trades were imported. Open the dashboard to retry the risk reading.'
+						);
+				})
+				.finally(() => {
+					if (version === fileVersion.current) setIntelligenceLoading(false);
+				});
 		} catch (error) {
 			toast.error(errorMessage(error));
 		}
@@ -203,7 +231,7 @@ export default function UploadPage() {
 			{user?.isGuest ? (
 				<WarningState
 					title="Guest workspace"
-					description="Your portfolio is isolated to this browser tab. Create an account to keep portfolios and analytics after you leave."
+					description="Access is scoped to this tab. Guest data is stored temporarily on the server and cleaned up after expiry. Keep your original CSV for future imports."
 				/>
 			) : null}
 
@@ -235,61 +263,79 @@ export default function UploadPage() {
 				})}
 			</div>
 
-			<SectionCard
-				title="Portfolio details"
-				description="These details identify the imported portfolio across Latent."
-			>
-				<div className="grid gap-3 lg:grid-cols-2">
-					<div className="grid gap-1.5">
-						<Label htmlFor="portfolio-name">Portfolio name</Label>
-						<Input
-							id="portfolio-name"
-							value={name}
-							onChange={(event) => setName(event.target.value)}
-							placeholder="Long-term India equity"
-						/>
-					</div>
-					<div className="grid gap-1.5">
-						<Label htmlFor="benchmark">Benchmark</Label>
-						<Input
-							id="benchmark"
-							value={benchmark}
-							onChange={(event) => setBenchmark(event.target.value.toUpperCase())}
-						/>
-					</div>
-					<div className="grid gap-1.5">
-						<Label htmlFor="currency">Base currency</Label>
-						<Input
-							id="currency"
-							value={baseCurrency}
-							onChange={(event) => setBaseCurrency(event.target.value.toUpperCase())}
-						/>
-					</div>
-					<div className="grid gap-1.5 lg:row-span-2">
-						<Label htmlFor="description">Description</Label>
-						<Textarea
-							id="description"
-							value={description}
-							onChange={(event) => setDescription(event.target.value)}
-							placeholder="Optional portfolio context"
-						/>
-					</div>
-				</div>
-			</SectionCard>
+			<Accordion type="single" collapsible>
+				<AccordionItem value="details">
+					<AccordionTrigger>
+						Portfolio details · {name || 'Named from your file'} · {baseCurrency}
+					</AccordionTrigger>
+					<AccordionContent>
+						<p className="text-muted-foreground mb-3 text-sm">
+							All trades must use the portfolio currency. Currency conversion is not supported.
+						</p>
+						<div className="grid gap-3 lg:grid-cols-2">
+							<div className="grid gap-1.5">
+								<Label htmlFor="portfolio-name">Portfolio name</Label>
+								<Input
+									id="portfolio-name"
+									value={name}
+									onChange={(event) => setName(event.target.value)}
+									placeholder="Long-term India equity"
+								/>
+							</div>
+							<div className="grid gap-1.5">
+								<Label htmlFor="benchmark">Benchmark</Label>
+								<Input
+									id="benchmark"
+									value={benchmark}
+									onChange={(event) => setBenchmark(event.target.value.toUpperCase())}
+								/>
+							</div>
+							<div className="grid gap-1.5">
+								<Label htmlFor="currency">Base currency</Label>
+								<Input
+									id="currency"
+									value={baseCurrency}
+									onChange={(event) => setBaseCurrency(event.target.value.toUpperCase())}
+								/>
+							</div>
+							<div className="grid gap-1.5 lg:row-span-2">
+								<Label htmlFor="description">Description</Label>
+								<Textarea
+									id="description"
+									value={description}
+									onChange={(event) => setDescription(event.target.value)}
+									placeholder="Optional portfolio context"
+								/>
+							</div>
+						</div>
+					</AccordionContent>
+				</AccordionItem>
+			</Accordion>
 
 			<SectionCard
 				title="Trade CSV"
 				description="Maximum file size 5 MB. Dates should use YYYY-MM-DD."
 				action={
 					file ? (
-						<Badge variant="outline" className={invalid ? 'text-negative' : 'text-positive'}>
+						<Badge
+							variant="outline"
+							className={
+								invalid || previewError
+									? 'text-negative'
+									: parsed?.valid
+										? 'text-positive'
+										: 'text-muted-foreground'
+							}
+						>
 							{preview.isPending
 								? 'Validating'
 								: invalid
 									? 'Needs attention'
 									: result
 										? 'Imported'
-										: 'Ready to import'}
+										: parsed?.valid
+											? 'Ready to import'
+											: 'Not yet validated'}
 						</Badge>
 					) : undefined
 				}
@@ -334,14 +380,12 @@ export default function UploadPage() {
 					</div>
 				) : null}
 
-				<div
-					role="button"
-					tabIndex={0}
+				<Button
+					type="button"
+					variant="outline"
+					disabled={upload.isPending}
 					aria-label={file ? `Selected CSV: ${file.name}. Click to replace.` : 'Select a trade CSV'}
 					onClick={() => inputRef.current?.click()}
-					onKeyDown={(event) => {
-						if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click();
-					}}
 					onDragOver={(event) => {
 						event.preventDefault();
 						setDragging(true);
@@ -354,10 +398,10 @@ export default function UploadPage() {
 						if (dropped) void accept(dropped);
 					}}
 					className={cn(
-						'focus-visible:ring-ring group flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-5 py-8 text-center outline-none transition-all duration-300 focus-visible:ring-2',
+						'focus-visible:ring-ring group flex h-auto min-h-48 w-full cursor-pointer flex-col items-center justify-center whitespace-normal rounded-lg border border-dashed px-5 py-6 text-center outline-none transition-colors duration-200 focus-visible:ring-2',
 						dragging && 'border-primary bg-primary/8 scale-[1.005]',
 						!dragging && !file && 'hover:border-primary/45 hover:bg-surface-strong/35',
-						file && !invalid && 'border-positive/45 bg-positive-muted/10',
+						file && parsed?.valid && 'border-positive/45 bg-positive-muted/10',
 						file && invalid && 'border-negative/45 bg-negative-muted/10'
 					)}
 				>
@@ -385,9 +429,13 @@ export default function UploadPage() {
 									{parsed?.errors[0]?.row ? `Row ${parsed.errors[0].row}: ` : ''}
 									{parsed?.errors[0]?.message ?? 'CSV validation did not complete.'}
 								</p>
-							) : (
+							) : parsed?.valid ? (
 								<p className="text-positive mt-3 inline-flex items-center gap-1.5 text-sm font-medium">
 									<CheckCircle2 className="size-4" /> Required columns verified
+								</p>
+							) : (
+								<p className="text-muted-foreground mt-3 text-sm">
+									{preview.isPending ? 'Checking your file...' : 'Validation has not completed.'}
 								</p>
 							)}
 							<p className="text-muted-foreground mt-4 text-xs">
@@ -403,17 +451,30 @@ export default function UploadPage() {
 							<p className="text-muted-foreground mt-1 text-xs">or click to browse</p>
 						</>
 					)}
-					<input
-						ref={inputRef}
-						type="file"
-						accept=".csv,text/csv"
-						className="hidden"
-						onChange={(event) => {
-							const next = event.target.files?.[0];
-							if (next) void accept(next);
-						}}
-					/>
-				</div>
+				</Button>
+				<Input
+					ref={inputRef}
+					type="file"
+					accept=".csv,text/csv"
+					className="hidden"
+					onChange={(event) => {
+						const next = event.target.files?.[0];
+						if (next) void accept(next);
+					}}
+				/>
+				{previewError ? (
+					<div role="alert" className="mt-3 space-y-2">
+						<p className="text-negative text-sm">{previewError} Your file is still selected.</p>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => file && void accept(file)}
+							disabled={preview.isPending}
+						>
+							Retry validation
+						</Button>
+					</div>
+				) : null}
 
 				{upload.isPending ? (
 					<div className="mt-4 space-y-2" aria-live="polite">

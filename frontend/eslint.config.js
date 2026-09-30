@@ -9,7 +9,7 @@ export default tseslint.config(
 	{
 		ignores: [
 			'.next',
-			'.next-e2e',
+			'.next-*',
 			'dist',
 			'next-env.d.ts',
 			'node_modules',

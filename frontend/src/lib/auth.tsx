@@ -12,6 +12,7 @@ import {
 	type AuthUser
 } from '@/lib/api/auth';
 import { AUTH_FAILURE_EVENT, publishPrincipalChanged } from '@/lib/auth-events';
+import { ApiError } from '@/lib/api';
 import {
 	clearLegacyAccessToken,
 	clearRapraSessionStorage,
@@ -114,10 +115,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 				else window.sessionStorage.setItem(SESSION_USER_STORAGE_KEY, JSON.stringify(next));
 				setUser(next);
 			})
-			.catch(() => {
-				clearLegacyAccessToken();
-				clearStoredUser();
-				setUser(null);
+			.catch((error) => {
+				// A backend outage is not evidence that a valid cookie was revoked.
+				if (error instanceof ApiError && error.status === 401) {
+					clearLegacyAccessToken();
+					clearStoredUser();
+					clearRapraSessionStorage();
+					setUser(null);
+				}
 			})
 			.finally(() => setHydrated(true));
 	}, []);

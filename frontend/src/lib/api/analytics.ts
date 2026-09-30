@@ -23,7 +23,7 @@ export function useRisk(id?: string, params: RiskParams = {}, enabled = true) {
 					confidence_level: params.confidence_level ?? 0.95,
 					risk_free_rate: params.risk_free_rate ?? 0.06,
 					rolling_window: params.rolling_window ?? 20,
-					persist: params.persist ?? true,
+					persist: params.persist ?? false,
 					start_date: params.start_date,
 					end_date: params.end_date
 				})

@@ -1,179 +1,146 @@
 'use client';
 
-import { ArrowRight, CheckCircle2, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
-
-import { ChartCard, SectionCard } from '@/components/charts/chart-card';
-import { CategoryBadge, RegimeBadge, SeverityBadge } from '@/components/domain/finance';
-import { MetricCard } from '@/components/common/metric-card';
+import { ArrowRight, RefreshCw } from 'lucide-react';
+import { SectionCard } from '@/components/charts/chart-card';
+import { EmptyState, ErrorState, LoadingSkeleton, WarningState } from '@/components/common/states';
 import { RequirePortfolio } from '@/components/layout/require-portfolio';
-import { SeriesLineChart } from '@/components/charts/series-charts';
-import { EmptyState } from '@/components/common/states';
 import { PageHeader } from '@/components/layout/top-bar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { buildHealthReport } from '@/lib/analytics-derive';
-import { usePositions, useRegime, useRisk, useSummary } from '@/lib/queries';
+import { useIntelligence } from '@/lib/api/intelligence';
+import { formatDate, formatPercent, formatRisk } from '@/lib/format';
 
 export default function PortfolioHealthRoutePage() {
 	return (
-		<RequirePortfolio label="the health score">
-			{(id) => <HealthPage portfolioId={id} />}
+		<RequirePortfolio label="risk review">
+			{(id) => <HealthPage key={id} portfolioId={id} />}
 		</RequirePortfolio>
 	);
 }
 
 function HealthPage({ portfolioId }: { portfolioId: string }) {
-	const summary = useSummary(portfolioId);
-	const positions = usePositions(portfolioId);
-	const risk = useRisk(portfolioId);
-	const regime = useRegime(portfolioId);
-
-	const report = buildHealthReport({
-		summary: summary.data,
-		positions: positions.data ?? [],
-		risk: risk.data,
-		regime: regime.data
-	});
-
-	const tone = report.score >= 75 ? 'positive' : report.score >= 50 ? 'warning' : 'negative';
-	const barClass =
-		report.score >= 75 ? 'bg-positive' : report.score >= 50 ? 'bg-warning' : 'bg-negative';
-
+	const intelligence = useIntelligence(portfolioId);
+	const risk = intelligence.data?.risk;
+	const report = risk?.review;
+	const period = risk?.methodology;
 	return (
-		<div className="space-y-4">
+		<div className="space-y-6">
 			<PageHeader
-				title="Portfolio Health"
-				description="A weighted composite of return, risk, diversification, regime, and data quality."
+				title="Risk review"
+				description="Understand the evidence behind your score, before making a decision."
 				actions={
-					<Button size="sm" variant="outline" asChild>
-						<Link href="/recommendations">
-							Recommendations <ArrowRight className="size-3.5" />
-						</Link>
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => void intelligence.refetch()}
+						disabled={intelligence.isFetching}
+					>
+						<RefreshCw className="size-4" /> Refresh
 					</Button>
 				}
 			/>
-
-			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-				<MetricCard
-					label="Health score"
-					value={`${report.score}/100`}
-					tone={tone}
-					hint={report.category}
-					loading={risk.isLoading}
+			{intelligence.isError ? (
+				<ErrorState error={intelligence.error} onRetry={() => void intelligence.refetch()} />
+			) : null}
+			{intelligence.isLoading ? (
+				<LoadingSkeleton rows={6} />
+			) : !report ? (
+				<EmptyState
+					title="Risk review is unavailable"
+					description="Add holdings and market history, then retry. Missing evidence is not a sign of low risk."
 				/>
-				<MetricCard label="Risk category" value={report.category} tone={tone} />
-				<MetricCard
-					label="Trend"
-					value={report.trend}
-					tone={
-						report.trend === 'Improving'
-							? 'positive'
-							: report.trend === 'Deteriorating'
-								? 'negative'
-								: 'neutral'
-					}
-				/>
-				<MetricCard
-					label="Regime backdrop"
-					value={<RegimeBadge label={regime.data?.current_regime} size="lg" />}
-					loading={regime.isLoading}
-				/>
-			</div>
-
-			<SectionCard title="Score components">
-				<div className="space-y-3">
-					{report.components.map((component) => (
-						<div key={component.key} className="space-y-1.5">
-							<div className="flex flex-wrap items-baseline justify-between gap-2">
-								<span className="text-sm font-medium">{component.label}</span>
-								<span className="text-muted-foreground num text-xs">
-									{component.score}/100 · weight {(component.weight * 100).toFixed(0)}%
-								</span>
-							</div>
-							<Progress
-								value={component.score}
-								className="h-2"
-								indicatorClassName={
-									component.score >= 70
-										? 'bg-positive'
-										: component.score >= 45
-											? 'bg-warning'
-											: 'bg-negative'
-								}
-							/>
-							<p className="text-muted-foreground text-xs">{component.detail}</p>
+			) : (
+				<>
+					<section className="grid gap-6 border-b pb-6 md:grid-cols-[14rem_minmax(0,1fr)]">
+						<div>
+							<p className="text-muted-foreground text-sm">Risk-review score</p>
+							<p className="num my-3 text-4xl font-medium">
+								{report.score == null ? (
+									'Unavailable'
+								) : (
+									<>
+										{report.score}
+										<span className="text-muted-foreground text-xl"> / 100</span>
+									</>
+								)}
+							</p>
+							<Badge variant="outline">{report.category}</Badge>
+							{report.score != null ? (
+								<Progress className="mt-4" value={report.score} aria-label="Risk-review score" />
+							) : null}
 						</div>
-					))}
-				</div>
-				<div className="mt-4 space-y-1.5 border-t pt-4">
-					<div className="flex items-baseline justify-between">
-						<span className="text-sm font-semibold">Composite score</span>
-						<span className="num text-sm font-semibold">{report.score}/100</span>
-					</div>
-					<Progress value={report.score} className="h-2.5" indicatorClassName={barClass} />
-				</div>
-			</SectionCard>
-
-			<div className="grid gap-4 lg:grid-cols-2">
-				<SectionCard title="Strengths">
-					{report.strengths.length === 0 ? (
-						<EmptyState title="No standout strengths yet" />
-					) : (
-						<ul className="space-y-2 text-sm">
-							{report.strengths.map((item) => (
-								<li key={item} className="flex items-start gap-2">
-									<CheckCircle2 className="text-positive mt-0.5 size-4 shrink-0" />
-									{item}
-								</li>
-							))}
-						</ul>
-					)}
-				</SectionCard>
-				<SectionCard title="Weaknesses">
-					{report.weaknesses.length === 0 ? (
-						<EmptyState title="No material weaknesses detected" />
-					) : (
-						<ul className="space-y-2 text-sm">
-							{report.weaknesses.map((item) => (
-								<li key={item} className="flex items-start gap-2">
-									<TriangleAlert className="text-warning mt-0.5 size-4 shrink-0" />
-									{item}
-								</li>
-							))}
-						</ul>
-					)}
-				</SectionCard>
-			</div>
-
-			<ChartCard title="Health trajectory">
-				{report.history.length ? (
-					<SeriesLineChart data={report.history} percent={false} color="var(--chart-2)" />
-				) : (
-					<EmptyState title="Not enough history" />
-				)}
-			</ChartCard>
-
-			<SectionCard title="Risk drivers">
-				{report.drivers.length === 0 ? (
-					<EmptyState title="No active risk drivers" />
-				) : (
-					<div className="grid gap-3 md:grid-cols-2">
-						{report.drivers.map((driver) => (
-							<div key={driver.id} className="rounded-lg border p-3">
-								<div className="flex flex-wrap items-center gap-2">
-									<SeverityBadge severity={driver.severity} />
-									<CategoryBadge category={driver.category} />
+						<div className="space-y-3 text-sm leading-6">
+							<h2 className="text-base font-medium">A review aid, not a safety rating</h2>
+							<p className="text-muted-foreground">{report.limitation}</p>
+							<p>
+								{period
+									? `${formatDate(period.start_date)} to ${formatDate(period.end_date)}`
+									: 'Period unavailable'}{' '}
+								· {report.observation_count} daily observations
+							</p>
+							<p className="text-muted-foreground">
+								The dashboard and this page use the same backend calculation. No estimated
+								historical score is shown.
+							</p>
+						</div>
+					</section>
+					{report.missing_inputs.length ? (
+						<WarningState
+							title="A score cannot be calculated yet"
+							description={`Missing: ${report.missing_inputs.join(', ')}. Available inputs are shown below without filling in unknown values.`}
+						/>
+					) : null}
+					<SectionCard
+						title="How it is calculated"
+						description={`Starts at 100, applies the contributions below, then rounds within 0–100. Formula: ${report.calculation_version}.`}
+					>
+						<div className="divide-y">
+							{report.components.map((item) => (
+								<div
+									key={item.key}
+									className="grid gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_7rem]"
+								>
+									<div>
+										<h3 className="text-sm font-medium">
+											{item.label} ·{' '}
+											<span className="num">
+												{item.key === 'sharpe' ? formatRisk(item.value) : formatPercent(item.value)}
+											</span>
+										</h3>
+										<p className="text-muted-foreground mt-1 text-sm">{item.rule}</p>
+									</div>
+									<p className="num text-sm sm:text-right">
+										{item.points > 0 ? '+' : ''}
+										{item.points.toFixed(1)} points
+									</p>
 								</div>
-								<p className="mt-2 text-sm font-medium">{driver.title}</p>
-								<p className="text-muted-foreground mt-1 text-xs">{driver.description}</p>
-								<p className="num mt-2 text-xs font-medium">{driver.metric}</p>
-								<p className="text-muted-foreground mt-1 text-xs">{driver.action}</p>
-							</div>
-						))}
-					</div>
-				)}
-			</SectionCard>
+							))}
+						</div>
+					</SectionCard>
+					<section className="space-y-3">
+						<h2 className="text-base font-medium">What the score does not cover</h2>
+						<p className="text-muted-foreground max-w-3xl text-sm leading-6">
+							A high score can still hide heavy exposure to one sector or stock. Check
+							concentration, your need for cash, and the age of prices. Market-state estimates do
+							not add bonus points.
+						</p>
+						<div className="flex flex-wrap gap-2">
+							<Button asChild variant="outline">
+								<Link href="/dashboard">
+									Review allocation <ArrowRight className="size-4" />
+								</Link>
+							</Button>
+							<Button asChild>
+								<Link href="/recommendations">
+									Review recommendations <ArrowRight className="size-4" />
+								</Link>
+							</Button>
+						</div>
+					</section>
+				</>
+			)}
 		</div>
 	);
 }

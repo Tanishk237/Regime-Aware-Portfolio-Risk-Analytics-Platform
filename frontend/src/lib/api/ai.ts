@@ -37,7 +37,23 @@ export type CopilotAIResponse = {
 	data_as_of?: string | null;
 	provider_error?: string | null;
 	retrieval?: RetrievalMetadata | null;
+	next_action?: { label: string; href: string } | null;
+	data_checks: {
+		label: string;
+		status: 'available' | 'needs_review';
+		detail: string;
+		href: string;
+	}[];
+	safety: {
+		policy_version: string;
+		read_only: boolean;
+		output_status: 'evidence_checked' | 'local' | 'rejected';
+		note: string;
+	};
+	elapsed_ms: number;
 };
+
+export type CopilotTask = 'question' | 'brief' | 'data_check';
 
 export function askCopilot(input: {
 	provider: AIProvider;
@@ -46,6 +62,7 @@ export function askCopilot(input: {
 	prompt: string;
 	portfolioId: string;
 	history: CopilotMessageInput[];
+	task?: CopilotTask;
 }) {
 	return api.post<CopilotAIResponse>('/ai/copilot/chat', {
 		portfolio_id: Number(input.portfolioId),
@@ -53,7 +70,8 @@ export function askCopilot(input: {
 		api_key: input.apiKey || undefined,
 		model: input.model,
 		prompt: input.prompt,
-		history: input.history
+		history: input.history.slice(-6),
+		task: input.task ?? 'question'
 	});
 }
 

@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { useAuth } from '@/lib/auth';
+import { ApiError } from '@/lib/api';
 import { useSelectedPortfolio } from '@/lib/portfolio-context';
 import { useAlerts, useDemoPortfolio, useHealth, useRefreshIntelligence } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -40,7 +41,7 @@ const ROUTE_LABELS: Record<string, string> = {
 	'/risk': 'Risk analytics',
 	'/regime': 'Regime analytics',
 	'/stress-tests': 'Stress tests',
-	'/portfolio-health': 'Portfolio health',
+	'/portfolio-health': 'Risk review',
 	'/recommendations': 'Recommendations',
 	'/ai-copilot': 'AI Copilot',
 	'/settings': 'Settings'
@@ -98,16 +99,25 @@ export function PortfolioSelector({ className }: { className?: string }) {
 }
 
 function ApiStatus() {
-	const { data, isLoading, isError, refetch } = useHealth();
-	const state = isLoading ? 'checking' : isError ? 'offline' : 'online';
+	const { data, error, isFetching, isError, refetch } = useHealth();
+	const state = isFetching
+		? 'checking'
+		: isError
+			? error instanceof ApiError && error.code === 'REQUEST_TIMEOUT'
+				? 'slow'
+				: 'offline'
+			: 'online';
 	const color =
 		state === 'online' ? 'bg-positive' : state === 'offline' ? 'bg-negative' : 'bg-warning';
 
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<button
+				<Button
 					type="button"
+					variant="outline"
+					size="sm"
+					aria-label="Check API connection"
 					onClick={() => void refetch()}
 					className="bg-card flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium"
 				>
@@ -115,9 +125,16 @@ function ApiStatus() {
 						className={cn('size-2 rounded-full', color, state === 'checking' && 'animate-pulse')}
 					/>
 					<span className="hidden sm:inline">
-						API {state === 'online' ? 'connected' : state === 'offline' ? 'offline' : 'checking'}
+						API{' '}
+						{state === 'online'
+							? 'connected'
+							: state === 'offline'
+								? 'unavailable'
+								: state === 'slow'
+									? 'responding slowly'
+									: 'checking'}
 					</span>
-				</button>
+				</Button>
 			</TooltipTrigger>
 			<TooltipContent>
 				{state === 'online'
@@ -177,9 +194,6 @@ export function TopBar() {
 				<div className="flex min-w-0 items-center gap-3">
 					<PortfolioSelector />
 					<div className="border-border/70 hidden min-w-0 items-center gap-2 border-l pl-3 lg:flex">
-						<span className="bg-positive relative size-1.5 shrink-0 rounded-full">
-							<span className="bg-positive absolute inset-0 rounded-full opacity-50 motion-safe:animate-ping" />
-						</span>
 						<span className="text-muted-foreground truncate text-xs">{routeLabel}</span>
 					</div>
 				</div>
@@ -311,7 +325,9 @@ export function PageHeader({
 		<div className="page-header-surface border-border/70 border-b pb-4 pt-1">
 			<div className="flex flex-wrap items-end justify-between gap-3">
 				<div>
-					<h1 className="text-2xl font-semibold tracking-normal sm:text-[1.7rem]">{title}</h1>
+					<h1 className="break-words text-2xl font-medium tracking-normal sm:text-[1.7rem]">
+						{title}
+					</h1>
 					{description ? (
 						<p className="text-muted-foreground mt-1 max-w-3xl text-sm leading-6">{description}</p>
 					) : null}

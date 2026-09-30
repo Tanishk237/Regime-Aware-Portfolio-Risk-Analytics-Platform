@@ -49,6 +49,7 @@ export function useIntelligence(portfolioId?: string) {
 		queryKey: keys.intelligence(portfolioId ?? 'none'),
 		queryFn: () => requestPortfolioIntelligence(queryClient, portfolioId as string),
 		enabled: Boolean(portfolioId),
+		retry: false,
 		staleTime: 60_000
 	});
 }

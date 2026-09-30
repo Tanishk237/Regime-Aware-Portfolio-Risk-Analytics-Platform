@@ -41,7 +41,7 @@ const NAV = [
 		]
 	},
 	{
-		label: 'Data',
+		label: 'Your holdings',
 		items: [
 			{ title: 'Trades', url: '/trades', icon: LineChart },
 			{ title: 'Upload CSV', url: '/upload', icon: Upload },
@@ -49,12 +49,12 @@ const NAV = [
 		]
 	},
 	{
-		label: 'Intelligence',
+		label: 'Understand & decide',
 		items: [
 			{ title: 'Risk Analytics', url: '/risk', icon: ShieldAlert },
 			{ title: 'Regime Analytics', url: '/regime', icon: BarChart3 },
 			{ title: 'Stress Tests', url: '/stress-tests', icon: FlaskConical },
-			{ title: 'Portfolio Health', url: '/portfolio-health', icon: HeartPulse },
+			{ title: 'Risk Review', url: '/portfolio-health', icon: HeartPulse },
 			{ title: 'Recommendations', url: '/recommendations', icon: Lightbulb },
 			{ title: 'AI Copilot', url: '/ai-copilot', icon: Bot }
 		]

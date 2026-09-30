@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useMetricExplanation } from '@/lib/queries';
+import { formatPercent } from '@/lib/format';
 
 type MetricCardProps = {
 	label: string;
@@ -52,26 +53,24 @@ export function MetricCard({
 	const labelNode = tooltip ? (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<span className="border-border text-muted-foreground cursor-help border-b border-dashed text-xs font-medium uppercase">
+				<Button variant="ghost" className="text-muted-foreground h-auto justify-start whitespace-normal p-0 text-left text-xs font-normal underline decoration-dotted underline-offset-4 hover:bg-transparent hover:text-foreground">
 					{label}
-				</span>
+				</Button>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-[16rem]">{tooltip}</TooltipContent>
 		</Tooltip>
 	) : (
-		<span className="text-muted-foreground text-xs font-medium uppercase">{label}</span>
+		<span className="text-muted-foreground text-xs">{label}</span>
 	);
 
 	return (
 		<Card
 			data-testid={testId}
-			data-interactive="true"
 			className={cn(
-				'metric-surface panel-surface border-border/70 hover:border-primary/25 group relative min-h-32 gap-0 overflow-hidden p-4',
+				'metric-surface group relative min-h-28 min-w-0 gap-0 p-4 sm:p-5',
 				className
 			)}
 		>
-			<div className="bg-primary absolute inset-y-4 left-0 w-0.5 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-70" />
 			<div className="flex items-start justify-between gap-2">
 				{labelNode}
 				<div className="flex items-center gap-1">
@@ -88,13 +87,13 @@ export function MetricCard({
 			) : (
 				<div
 					data-slot="metric-value"
-					className={cn('num mt-2 text-2xl font-semibold tabular-nums tracking-normal', toneClass)}
+					className={cn('num mt-3 break-words text-2xl font-medium leading-tight tracking-normal', toneClass)}
 				>
 					{value}
 				</div>
 			)}
-			<div className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
-				{delta !== undefined && delta !== null && !Number.isNaN(delta) ? (
+			<div className="text-muted-foreground mt-2 flex flex-wrap items-baseline gap-1.5 text-xs leading-5">
+				{delta !== undefined && delta !== null && Number.isFinite(delta) ? (
 					<span
 						className={cn(
 							'inline-flex items-center gap-0.5 font-medium',
@@ -102,10 +101,10 @@ export function MetricCard({
 						)}
 					>
 						{delta >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-						{(delta * 100).toFixed(2)}%
+						{formatPercent(delta)}
 					</span>
 				) : null}
-				{hint ? <span className="truncate">{hint}</span> : null}
+				{hint ? <span>{hint}</span> : null}
 			</div>
 		</Card>
 	);

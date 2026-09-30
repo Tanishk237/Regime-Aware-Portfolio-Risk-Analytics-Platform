@@ -18,21 +18,21 @@ const GUIDE_STORAGE_KEY = 'latent.dashboard-guide.v1';
 const GUIDE_ITEMS = [
 	{
 		icon: ChartNoAxesCombined,
-		title: 'Portfolio outcome',
+		title: 'What you own',
 		description:
-			'Current value, invested capital and total return describe where the portfolio stands.'
+			'Holdings value uses the latest available prices. Open-holdings return compares it with the remaining purchase cost. Gains or losses from sold holdings are shown separately.'
 	},
 	{
 		icon: Activity,
 		title: 'Current market state',
 		description:
-			'The regime and its confidence show the HMM state inferred from recent market behavior.'
+			'The market state describes recent behavior, not what will happen next. A model probability is a historical state fit, not forecast accuracy.'
 	},
 	{
 		icon: HeartPulse,
 		title: 'Risk context',
 		description:
-			'Drawdown, volatility, VaR and health explain how much pressure sits behind the return.'
+			"Risk metrics model how today's holdings would have behaved over the available history. The risk-review score summarizes that model; it is not a safety rating."
 	}
 ];
 
@@ -52,7 +52,12 @@ export function DashboardGuide({ portfolioId }: { portfolioId: string }) {
 
 	return (
 		<>
-			<Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+			<Button
+				size="sm"
+				variant="ghost"
+				aria-label="How to read this dashboard"
+				onClick={() => setOpen(true)}
+			>
 				<Info className="size-4" />
 				<span className="hidden sm:inline">How to read this</span>
 			</Button>
@@ -61,7 +66,7 @@ export function DashboardGuide({ portfolioId }: { portfolioId: string }) {
 					<DialogHeader>
 						<DialogTitle>Read your portfolio in three layers</DialogTitle>
 						<DialogDescription>
-							Latent connects performance with the market state and the risk taken to get there.
+							Start with your holdings, then review risk and the next action worth considering.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="divide-border rounded-lg border">

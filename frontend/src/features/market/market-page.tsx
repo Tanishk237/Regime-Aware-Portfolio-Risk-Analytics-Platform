@@ -8,7 +8,7 @@ import { DataTable, type Column } from '@/components/common/data-table';
 import { DateRangeControls } from '@/components/common/date-range-controls';
 import { MetricCard } from '@/components/common/metric-card';
 import { SeriesLineChart } from '@/components/charts/series-charts';
-import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/common/states';
+import { EmptyState, ErrorState, LoadingSkeleton, WarningState } from '@/components/common/states';
 import { PageHeader } from '@/components/layout/top-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -206,6 +206,12 @@ export default function MarketPage() {
 				/>
 			</div>
 
+			{market.data?.warnings.length ? (
+				<WarningState
+					title="Some market feeds are unavailable"
+					description={market.data.warnings.join(' ')}
+				/>
+			) : null}
 			<ChartCard title="Close price" description={`${query} · ${startDate} to ${endDate}`}>
 				{market.isLoading ? (
 					<LoadingSkeleton rows={5} />

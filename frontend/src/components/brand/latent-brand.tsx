@@ -23,16 +23,16 @@ export function LatentMark({
 					src="/brand/latent-tile-light.png"
 					alt="Latent logo"
 					fill
+					loading="eager"
 					sizes="48px"
-					priority
 					className="object-contain dark:hidden"
 				/>
 				<Image
 					src="/brand/latent-tile-dark.png"
 					alt=""
 					fill
+					loading="eager"
 					sizes="48px"
-					priority
 					aria-hidden
 					className="hidden object-contain dark:block"
 				/>
@@ -46,8 +46,8 @@ export function LatentMark({
 			src={src}
 			alt="Latent logo"
 			width={96}
+			loading="eager"
 			height={96}
-			priority
 			className={cn('rounded-xl object-contain', className)}
 		/>
 	);

@@ -20,6 +20,13 @@ import {
 import { PageHeader } from '@/components/layout/top-bar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger
+} from '@/components/ui/accordion';
+import { useIntelligence } from '@/lib/api/intelligence';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { daysAgo, formatDate, formatNumber, formatPercent, isoDate } from '@/lib/format';
 import { useRegime } from '@/lib/queries';
@@ -32,7 +39,7 @@ type HistoryRow = NonNullable<RegimeAnalytics['history']>[number];
 export default function RegimeRoutePage() {
 	return (
 		<RequirePortfolio label="regime analytics">
-			{(id) => <RegimePage portfolioId={id} />}
+			{(id) => <RegimePage key={id} portfolioId={id} />}
 		</RequirePortfolio>
 	);
 }
@@ -40,7 +47,13 @@ export default function RegimeRoutePage() {
 function RegimePage({ portfolioId }: { portfolioId: string }) {
 	const [startDate, setStartDate] = useState(daysAgo(365));
 	const [endDate, setEndDate] = useState(isoDate(new Date()));
-	const regime = useRegime(portfolioId, { start_date: startDate, end_date: endDate });
+	const [applied, setApplied] = useState<{ start_date: string; end_date: string } | null>(null);
+	const overview = useIntelligence(portfolioId);
+	const windowed = useRegime(portfolioId, applied ?? {}, Boolean(applied));
+	const regime = {
+		...(applied ? windowed : overview),
+		data: applied ? windowed.data : overview.data?.regime
+	};
 	const data = regime.data;
 
 	const labelFor = (state: number, fallback?: string) =>
@@ -151,14 +164,41 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 				}
 			/>
 
-			<SectionCard title="Detection window">
-				<DateRangeControls
-					startDate={startDate}
-					endDate={endDate}
-					onStartDate={setStartDate}
-					onEndDate={setEndDate}
-				/>
-			</SectionCard>
+			<Accordion type="single" collapsible>
+				<AccordionItem value="window">
+					<AccordionTrigger>
+						Analysis window {applied ? '(custom)' : '(dashboard baseline)'}
+					</AccordionTrigger>
+					<AccordionContent>
+						<form
+							className="flex flex-wrap items-end gap-3"
+							onSubmit={(event) => {
+								event.preventDefault();
+								setApplied({ start_date: startDate, end_date: endDate });
+							}}
+						>
+							<DateRangeControls
+								startDate={startDate}
+								endDate={endDate}
+								onStartDate={setStartDate}
+								onEndDate={setEndDate}
+							/>
+							<Button
+								type="submit"
+								size="sm"
+								disabled={!startDate || !endDate || startDate > endDate}
+							>
+								Apply window
+							</Button>
+							{applied ? (
+								<Button type="button" size="sm" variant="ghost" onClick={() => setApplied(null)}>
+									Use dashboard baseline
+								</Button>
+							) : null}
+						</form>
+					</AccordionContent>
+				</AccordionItem>
+			</Accordion>
 
 			{regime.isError ? (
 				<ErrorState error={regime.error} onRetry={() => void regime.refetch()} />
@@ -168,7 +208,7 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 					title="Regime result is using available data"
 					description={[
 						modelName === 'deterministic_fallback'
-							? 'The trained HMM was unavailable, so deterministic regime labelling was used.'
+							? 'The trained model was unavailable. Simple rules were used instead; they do not produce statistical confidence.'
 							: null,
 						...metadataWarnings.map((warning) => String(warning))
 					]
@@ -184,16 +224,16 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 					<MetricCard
 						label="Current regime"
 						value={<RegimeBadge label={data?.current_regime} size="lg" />}
-						hint={modelName === 'deterministic_fallback' ? 'fallback labeller' : 'HMM model'}
-						explanation={{ portfolioId, metric: 'current_regime' }}
+						hint={data?.fallback_used ? 'Rule-based estimate' : 'Model estimate'}
+						explanation={applied ? undefined : { portfolioId, metric: 'current_regime' }}
 					/>
 					<MetricCard
 						label="State fit probability"
-						value={formatPercent(confidence)}
+						value={data?.fallback_used ? 'Not estimated' : formatPercent(confidence)}
 						hint="Not forecast accuracy"
-						explanation={{ portfolioId, metric: 'regime_confidence' }}
+						explanation={applied ? undefined : { portfolioId, metric: 'regime_confidence' }}
 					/>
-					<MetricCard label="Hidden state" value={data?.current_state ?? '-'} />
+					<MetricCard label="Evidence through" value={formatDate(history.at(-1)?.date)} />
 					<MetricCard label="History rows" value={history.length} />
 					<MetricCard label="States" value={Object.keys(data?.state_labels ?? {}).length || '-'} />
 				</div>
@@ -204,13 +244,15 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 					title="Why this regime"
 					description={data.explanation.summary}
 					action={
-						<Button asChild size="sm" variant="outline">
-							<Link
-								href={`/ai-copilot?prompt=${encodeURIComponent('Explain the current regime, its drivers, duration, and likely transition.')}`}
-							>
-								Ask Copilot
-							</Link>
-						</Button>
+						!applied ? (
+							<Button asChild size="sm" variant="outline">
+								<Link
+									href={`/ai-copilot?prompt=${encodeURIComponent('Explain the current regime, its drivers, duration, and likely transition.')}`}
+								>
+									Ask Copilot
+								</Link>
+							</Button>
+						) : null
 					}
 				>
 					<div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -252,9 +294,17 @@ function RegimePage({ portfolioId }: { portfolioId: string }) {
 			) : null}
 
 			<div className="grid gap-4 lg:grid-cols-2">
-				<ChartCard title="Regime timeline">
+				<ChartCard
+					title="Regime timeline"
+					description="Named market states; transitions are steps, not changes in return."
+				>
 					{historySeries.length ? (
-						<SeriesLineChart data={historySeries} percent={false} color="var(--chart-4)" />
+						<SeriesLineChart
+							data={historySeries}
+							percent={false}
+							stateLabels={data?.state_labels}
+							color="var(--chart-2)"
+						/>
 					) : (
 						<EmptyState title="No regime history available" />
 					)}

@@ -9,7 +9,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
-/** Scroll-triggered reveal with a subtle 3D lift. */
+/** Keep data visible immediately; motion should never delay reading it. */
 export function Reveal({
 	children,
 	delay = 0,
@@ -24,11 +24,9 @@ export function Reveal({
 	return (
 		<motion.div
 			className={className}
-			initial={reduceMotion ? false : { opacity: 0, y: 12, rotateX: 3 }}
-			whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
-			viewport={{ once: true, margin: '-60px' }}
-			transition={{ duration: reduceMotion ? 0 : 0.42, delay, ease: [0.16, 1, 0.3, 1] }}
-			style={{ transformPerspective: 1200 }}
+			initial={reduceMotion ? false : { transform: 'translateY(6px)' }}
+			animate={{ transform: 'translateY(0)' }}
+			transition={{ duration: reduceMotion ? 0 : 0.2, delay, ease: 'easeOut' }}
 		>
 			{children}
 		</motion.div>
@@ -56,6 +54,7 @@ export function RevealGroup({
 
 /** Pointer-tracked tilt + spotlight wrapper for KPI cards. */
 export function TiltCard({ children, className }: { children: ReactNode; className?: string }) {
+	const reducedMotion = useReducedMotion();
 	const rx = useSpring(0, { stiffness: 220, damping: 20 });
 	const ry = useSpring(0, { stiffness: 220, damping: 20 });
 	const mx = useMotionValue(50);
@@ -67,6 +66,7 @@ export function TiltCard({ children, className }: { children: ReactNode; classNa
 			className={cn('relative h-full rounded-xl', className)}
 			style={{ rotateX: rx, rotateY: ry, transformPerspective: 900 }}
 			onPointerMove={(event) => {
+				if (reducedMotion || event.pointerType !== 'mouse') return;
 				const rect = event.currentTarget.getBoundingClientRect();
 				const px = (event.clientX - rect.left) / rect.width;
 				const py = (event.clientY - rect.top) / rect.height;
@@ -79,7 +79,7 @@ export function TiltCard({ children, className }: { children: ReactNode; classNa
 				rx.set(0);
 				ry.set(0);
 			}}
-			whileHover={{ translateY: -2 }}
+			whileHover={reducedMotion ? undefined : { translateY: -1 }}
 		>
 			<motion.div
 				aria-hidden

@@ -8,16 +8,10 @@ import { SeriesLineChart } from '@/components/charts/series-charts';
 import { EmptyState, LoadingSkeleton } from '@/components/common/states';
 import { PageHeader } from '@/components/layout/top-bar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { buildHealthReport, buildRecommendations, metric } from '@/lib/analytics-derive';
+import { metric } from '@/lib/analytics-derive';
+import { useIntelligence } from '@/lib/api/intelligence';
 import { formatCurrency, formatDate, formatNumber, formatPercent, toSeries } from '@/lib/format';
-import {
-	usePortfolio,
-	usePositions,
-	useRegime,
-	useRisk,
-	useSummary,
-	useTrades
-} from '@/lib/queries';
+import { usePortfolio, usePositions, useSummary, useTrades } from '@/lib/queries';
 import type { Position, Trade } from '@/lib/types';
 import { useParams } from 'next/navigation';
 
@@ -28,18 +22,14 @@ export default function PortfolioDetailPage() {
 	const summary = useSummary(portfolioId);
 	const positions = usePositions(portfolioId);
 	const trades = useTrades(portfolioId);
-	const risk = useRisk(portfolioId);
-	const regime = useRegime(portfolioId);
+	const intelligence = useIntelligence(portfolioId);
+	const risk = { data: intelligence.data?.risk ?? undefined };
+	const regime = { data: intelligence.data?.regime ?? undefined };
 
 	const currency = portfolio.data?.base_currency ?? summary.data?.base_currency ?? 'INR';
 	const cumulative = toSeries(risk.data?.series?.cumulative_returns);
-	const health = buildHealthReport({
-		summary: summary.data,
-		positions: positions.data ?? [],
-		risk: risk.data,
-		regime: regime.data
-	});
-	const recommendations = buildRecommendations(health).slice(0, 3);
+	const health = risk.data?.review;
+	const recommendations = (intelligence.data?.recommendations ?? []).slice(0, 3);
 
 	const positionColumns: Array<Column<Position>> = [
 		{
@@ -104,7 +94,7 @@ export default function PortfolioDetailPage() {
 
 			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 				<MetricCard
-					label="Invested"
+					label="Remaining cost basis"
 					value={formatCurrency(summary.data?.invested_value, currency)}
 					loading={summary.isLoading}
 				/>
@@ -118,7 +108,12 @@ export default function PortfolioDetailPage() {
 					value={<PnLValue value={summary.data?.total_pnl} currency={currency} />}
 					loading={summary.isLoading}
 				/>
-				<MetricCard label="Health score" value={`${health.score}/100`} hint={health.category} />
+				<MetricCard
+					label="Risk-review score"
+					value={health?.score == null ? 'Unavailable' : `${health.score}/100`}
+					hint={health?.category}
+					loading={intelligence.isLoading}
+				/>
 			</div>
 
 			<Tabs defaultValue="overview">
@@ -130,7 +125,10 @@ export default function PortfolioDetailPage() {
 				</TabsList>
 
 				<TabsContent value="overview" className="mt-4 space-y-4">
-					<ChartCard title="Cumulative returns">
+					<ChartCard
+						title="Current-holdings model return"
+						description="Hypothetical fixed-weight history, not your actual investment returns."
+					>
 						{cumulative.length === 0 ? (
 							<EmptyState title="Portfolio returns are not available yet." />
 						) : (

@@ -37,7 +37,7 @@ export function useMarketSnapshot(params: MarketParams, enabled = true) {
 				end_date: params.end_date,
 				persist: params.persist ?? true
 			};
-			const [historical, live, vix, flows, index, features] = await Promise.all([
+			const results = await Promise.allSettled([
 				tickerParam
 					? api.get<unknown>('/market/historical-prices', {
 							tickers: tickerParam,
@@ -77,7 +77,26 @@ export function useMarketSnapshot(params: MarketParams, enabled = true) {
 						)
 					: Promise.resolve(undefined)
 			]);
+			const labels = [
+				'Price history',
+				'Latest quotes',
+				'India VIX',
+				'Institutional flows',
+				'Index history',
+				'Model features'
+			];
+			if (results.every((result) => result.status === 'rejected' || result.value === undefined)) {
+				throw new Error('Market feeds are unavailable. Please try again shortly.');
+			}
+			const [historical, live, vix, flows, index, features] = results.map((result) =>
+				result.status === 'fulfilled' ? result.value : undefined
+			);
 			return {
+				warnings: results.flatMap((result, index) =>
+					result.status === 'rejected'
+						? [`${labels[index]} could not be loaded. Other available data is shown.`]
+						: []
+				),
 				historical_prices: asArray<unknown>(asRecord(historical)['prices']).map(
 					adaptHistoricalPrice
 				),

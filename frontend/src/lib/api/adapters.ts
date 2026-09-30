@@ -38,6 +38,7 @@ function maybeString(value: unknown): string | null | undefined {
 function maybeNumber(value: unknown): number | null | undefined {
 	if (value === undefined) return undefined;
 	if (value === null) return null;
+	if (typeof value === 'boolean' || (typeof value === 'string' && !value.trim())) return null;
 	const parsed = typeof value === 'number' ? value : Number(value);
 	return Number.isFinite(parsed) ? parsed : null;
 }
@@ -62,19 +63,14 @@ function numberOrZero(value: unknown): number {
 }
 
 export function normalizeSeries(value: unknown, valueKey = 'value') {
-	if (Array.isArray(value)) {
-		return value
-			.map((item) => {
-				const row = asRecord(item);
-				return {
-					date: String(row['date'] ?? ''),
-					value: numberOrZero(row[valueKey] ?? row['value'])
-				};
-			})
-			.filter((row) => row.date);
-	}
-	const record = asRecord(value);
-	return Object.entries(record).map(([date, val]) => ({ date, value: numberOrZero(val) }));
+	const rows = Array.isArray(value)
+		? value.map(asRecord)
+		: Object.entries(asRecord(value)).map(([date, val]) => ({ date, [valueKey]: val }));
+	return rows.flatMap((row) => {
+		const date = String(row['date'] ?? '');
+		const point = maybeNumber(row[valueKey] ?? row['value']);
+		return date && point != null ? [{ date, value: point }] : [];
+	});
 }
 
 export function adaptPortfolio(value: unknown): Portfolio {
@@ -125,9 +121,9 @@ export function adaptPosition(value: unknown): Position {
 		current_price: maybeNumber(row['current_price']),
 		market_value: maybeNumber(row['market_value']),
 		cost_basis: maybeNumber(row['cost_basis']),
-		unrealized_pnl: maybeNumber(row['unrealized_pnl']) ?? 0,
+		unrealized_pnl: maybeNumber(row['unrealized_pnl']),
 		realized_pnl: maybeNumber(row['realized_pnl']) ?? 0,
-		weight: marketWeight ?? costWeight,
+		weight: marketWeight,
 		market_weight: marketWeight,
 		cost_weight: costWeight,
 		updated_at: maybeString(row['updated_at'])
@@ -149,7 +145,6 @@ export function adaptPortfolioReturn(value: unknown): PortfolioReturn {
 
 export function adaptSummary(value: unknown): PortfolioSummary {
 	const row = asRecord(value);
-	const unrealized = maybeNumber(row['unrealized_pnl']) ?? maybeNumber(row['unrealized_profit']);
 	const realized = maybeNumber(row['realized_pnl']) ?? maybeNumber(row['realized_profit']) ?? 0;
 	const returnPct = optionalReturnFraction(
 		row['return_pct'] ?? row['total_return'] ?? row['unrealized_profit_pct']
@@ -161,9 +156,7 @@ export function adaptSummary(value: unknown): PortfolioSummary {
 		benchmark: optionalString(row['benchmark']),
 		invested_value: maybeNumber(row['invested_value']) ?? 0,
 		current_value: optionalNumber(row['current_value']),
-		total_pnl:
-			optionalNumber(row['total_pnl']) ??
-			(unrealized === null ? realized : (unrealized ?? 0) + realized),
+		total_pnl: optionalNumber(row['total_pnl']),
 		unrealized_pnl: optionalNumber(row['unrealized_pnl'] ?? row['unrealized_profit']),
 		realized_pnl: realized,
 		return_pct: returnPct,
@@ -182,6 +175,8 @@ export function adaptRisk(value: unknown): RiskAnalytics {
 	const returns = normalizeSeries(row['returns'], 'daily_return');
 	const pnl = asRecord(row['pnl']);
 	return {
+		review: row['review'] as RiskAnalytics['review'],
+		methodology: row['methodology'] as RiskAnalytics['methodology'],
 		success: row['success'] !== false,
 		portfolio_id: optionalString(row['portfolio_id']),
 		as_of: optionalString(row['as_of']),
@@ -267,10 +262,7 @@ export function adaptRegime(value: unknown): RegimeAnalytics {
 		durations,
 		regime_duration: durations,
 		explanation: asRecord(row['explanation']) as RegimeAnalytics['explanation'],
-		fallback_used: Boolean(
-			asRecord(row['feature_metadata'])['fallback_used'] ||
-			asRecord(row['feature_metadata'])['model_fallback_used']
-		)
+		fallback_used: Boolean(asRecord(row['feature_metadata'])['model_fallback_used'])
 	};
 }
 

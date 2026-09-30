@@ -19,13 +19,17 @@ export function ChartCard({
 	bodyClassName?: string;
 }) {
 	return (
-		<Card className={cn('panel-surface border-border/70 gap-3 overflow-hidden py-4', className)}>
+		<Card
+			role="region"
+			aria-label={title}
+			className={cn('panel-surface border-border/70 gap-3 overflow-hidden py-4', className)}
+		>
 			<CardHeader className="gap-1 px-4 sm:px-5">
 				<div className="flex flex-wrap items-start justify-between gap-2">
-					<div>
-						<CardTitle className="text-base font-semibold">{title}</CardTitle>
+					<div className="min-w-0">
+						<CardTitle className="text-sm font-medium">{title}</CardTitle>
 						{description ? (
-							<CardDescription className="text-xs">{description}</CardDescription>
+							<CardDescription className="mt-1 max-w-prose text-xs leading-5">{description}</CardDescription>
 						) : null}
 					</div>
 					{action}
@@ -50,19 +54,19 @@ export function SectionCard({
 	className?: string;
 }) {
 	return (
-		<Card className={cn('panel-surface border-border/70 gap-3 overflow-hidden py-4', className)}>
-			<CardHeader className="gap-1 px-4 sm:px-5">
+		<section className={cn('min-w-0 border-b border-border/70 py-4', className)}>
+			<header className="mb-4">
 				<div className="flex flex-wrap items-start justify-between gap-2">
 					<div>
-						<CardTitle className="text-base font-semibold">{title}</CardTitle>
+						<h2 className="text-base font-medium">{title}</h2>
 						{description ? (
-							<CardDescription className="text-xs">{description}</CardDescription>
+							<p className="text-muted-foreground mt-1 text-sm leading-6">{description}</p>
 						) : null}
 					</div>
 					{action}
 				</div>
-			</CardHeader>
-			<CardContent className="px-4 sm:px-5">{children}</CardContent>
-		</Card>
+			</header>
+			{children}
+		</section>
 	);
 }

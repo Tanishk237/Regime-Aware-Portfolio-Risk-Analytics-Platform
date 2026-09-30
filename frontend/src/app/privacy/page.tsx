@@ -7,7 +7,18 @@ export default function PrivacyPage() {
 				<p>
 					Latent processes account details, portfolio trades, generated analytics, saved reports,
 					and risk preferences needed to provide the service. Provider API keys entered in the
-					browser are scoped to that browser tab and are not persisted by Latent.
+					browser are held in page memory, sent to the backend for the selected request, and are not
+					saved in browser storage or the Latent database. Reloading the page clears them.
+				</p>
+			</LegalSection>
+			<LegalSection title="AI requests">
+				<p>
+					When you use an AI provider, Latent sends your question, bounded recent questions, and
+					selected portfolio facts. Raw CSV files, account details, portfolio names, and notes are
+					excluded from this context. Selected financial facts can still be sensitive. The chosen
+					provider processes this information under its own policies. The data-readiness check uses
+					local application rules and makes no external AI call. Do not include passwords, API keys,
+					or other confidential information in chat.
 				</p>
 			</LegalSection>
 			<LegalSection title="Guest sessions">

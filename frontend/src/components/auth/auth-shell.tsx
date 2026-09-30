@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, HelpCircle } from 'lucide-react';
+import { Activity, HelpCircle, Pause, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -48,6 +48,8 @@ const fallbackTape = [
 type TapeRow = {
 	ticker: string;
 	price: number;
+	stale?: boolean;
+	asOf?: string;
 };
 
 function BrandHeader() {
@@ -60,7 +62,8 @@ function BrandHeader() {
 }
 
 function MarketTape() {
-	const { data } = useLivePrices(tapeTickers, true);
+	const { data, isError, isPending } = useLivePrices(tapeTickers, true, 5 * 60_000);
+	const [paused, setPaused] = useState(false);
 	const liveRows: TapeRow[] = data?.length
 		? data.map((item) => ({
 				ticker: item.ticker
@@ -68,28 +71,57 @@ function MarketTape() {
 					.replace('^NSEI', 'NIFTY')
 					.replace('^BSESN', 'SENSEX')
 					.replace('^NSEBANK', 'BANKNIFTY'),
-				price: item.price
+				price: item.price,
+				stale: item.is_stale,
+				asOf: item.as_of
 			}))
 		: fallbackTape;
 	const rows = [...liveRows, ...liveRows];
 
 	return (
-		<div className="border-border/70 bg-card/70 group relative overflow-hidden border-b py-2 backdrop-blur-xl">
-			<div className="from-card pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r to-transparent" />
-			<div className="from-card pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l to-transparent" />
-			<div className="market-tape-track flex w-max items-center gap-7 px-4">
-				{rows.map((item, index) => (
-					<div
-						key={`${item.ticker}-${index}`}
-						className="flex items-center gap-2 text-xs sm:text-sm"
-					>
-						<span className="bg-primary/80 size-1.5 rounded-full" aria-hidden />
-						<span className="text-foreground/90 font-medium">{item.ticker}</span>
-						<span className="text-muted-foreground">
-							{item.price ? formatNumber(item.price, 2) : 'syncing'}
-						</span>
-					</div>
-				))}
+		<div className="border-border/70 bg-card/70 group relative flex h-9 items-center overflow-hidden border-b">
+			<Button
+				variant="ghost"
+				size="icon"
+				className="z-20 size-9 shrink-0 rounded-none bg-card"
+				aria-label={paused ? 'Resume market prices' : 'Pause market prices'}
+				onClick={() => setPaused(!paused)}
+			>
+				{paused ? <Play className="size-3" /> : <Pause className="size-3" />}
+			</Button>
+			<div className="min-w-0 flex-1 overflow-hidden">
+				<div className="from-card pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r to-transparent" />
+				<div className="from-card pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l to-transparent" />
+				<div
+					className="market-tape-track flex w-max items-center gap-7 px-4"
+					style={paused ? { animationPlayState: 'paused' } : undefined}
+				>
+					{rows.map((item, index) => (
+						<div
+							key={`${item.ticker}-${index}`}
+							aria-hidden={index >= liveRows.length}
+							title={
+								item.asOf
+									? `Latest available quote: ${item.asOf}. Quotes may be delayed.`
+									: undefined
+							}
+							className="flex items-center gap-2 text-xs sm:text-sm"
+						>
+							<span className="bg-primary/80 size-1.5 rounded-full" aria-hidden />
+							<span className="text-foreground/90 font-medium">{item.ticker}</span>
+							<span className="text-muted-foreground">
+								{item.price
+									? formatNumber(item.price, 2)
+									: isError
+										? 'unavailable'
+										: isPending
+											? 'loading'
+											: 'unavailable'}
+							</span>
+							{item.stale ? <span className="text-warning text-xs">stored</span> : null}
+						</div>
+					))}
+				</div>
 			</div>
 		</div>
 	);
@@ -155,16 +187,13 @@ export function AuthShell({
 							See the hidden state behind your portfolio.
 						</h1>
 						<p className="text-muted-foreground mt-3 hidden max-w-2xl text-sm font-normal leading-6 sm:mt-5 sm:block sm:text-base sm:leading-7 md:text-lg">
-							Latent uses Hidden Markov Models to detect market regimes in real time and shows you
-							what your risk actually looks like, not just on average, but right now.
+							Bring your trades into one clear view. Understand what you own, where your risk is
+							concentrated, and what deserves a closer look.
 						</p>
 						<div className="mt-9 hidden max-w-2xl sm:block" aria-hidden="true">
 							<div className="text-muted-foreground mb-3 flex items-center justify-between text-xs">
-								<span>Latent market-state field</span>
-								<span className="inline-flex items-center gap-2">
-									<span className="bg-positive auth-live-dot size-1.5 rounded-full" />
-									Signal active
-								</span>
+								<span>Portfolio Regime Intelligence</span>
+								<span>Illustrative market pattern</span>
 							</div>
 							<svg viewBox="0 0 680 150" className="h-36 w-full overflow-visible">
 								<path d="M0 79 H680" fill="none" stroke="var(--border)" strokeDasharray="4 10" />

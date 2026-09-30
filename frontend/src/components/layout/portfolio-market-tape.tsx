@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Pause, Play } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatNumber } from '@/lib/format';
@@ -16,6 +18,7 @@ function displayTicker(ticker: string) {
 }
 
 export function PortfolioMarketTape() {
+	const [paused, setPaused] = useState(false);
 	const { selectedId } = useSelectedPortfolio();
 	const positions = usePositions(selectedId);
 	const openPositions = useMemo(
@@ -72,16 +75,26 @@ export function PortfolioMarketTape() {
 			className="border-border/70 bg-card/72 group sticky top-16 z-20 flex h-9 min-w-0 items-center overflow-hidden border-b backdrop-blur-xl"
 		>
 			<div className="border-border/70 bg-card/95 z-10 hidden h-full shrink-0 items-center gap-2 border-r px-3 text-xs font-medium sm:flex">
-				<span className="bg-positive relative size-1.5 rounded-full">
-					<span className="bg-positive absolute inset-0 rounded-full opacity-40 motion-safe:animate-ping" />
-				</span>
-				Portfolio prices
+				Latest available prices
 			</div>
+			<Button
+				variant="ghost"
+				size="icon"
+				className="z-10 size-9 shrink-0 rounded-none"
+				aria-label={paused ? 'Resume portfolio prices' : 'Pause portfolio prices'}
+				onClick={() => setPaused(!paused)}
+			>
+				{paused ? <Play className="size-3" /> : <Pause className="size-3" />}
+			</Button>
 			<div className="min-w-0 flex-1 overflow-hidden">
-				<div className="market-tape-track flex w-max items-center gap-7 px-4">
+				<div
+					className="market-tape-track flex w-max items-center gap-7 px-4"
+					style={paused ? { animationPlayState: 'paused' } : undefined}
+				>
 					{trackRows.map((item, index) => (
 						<div
 							key={`${item.ticker}-${index}`}
+							aria-hidden={index >= rows.length}
 							className="flex h-9 items-center gap-2 whitespace-nowrap text-xs"
 							title={`${item.ticker}${item.asOf ? ` · ${item.asOf}` : ''}${item.isStale ? ' · latest stored price' : ''}`}
 						>
@@ -93,9 +106,7 @@ export function PortfolioMarketTape() {
 							<span className="text-muted-foreground tabular-nums">
 								{formatNumber(item.price, 2)}
 							</span>
-							{item.isStale ? (
-								<span className="text-warning hidden text-[10px] sm:inline">stored</span>
-							) : null}
+							{item.isStale ? <span className="text-warning text-xs">stored</span> : null}
 						</div>
 					))}
 				</div>

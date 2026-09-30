@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Briefcase, Plus, ScrollText, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { EmptyState } from '@/components/common/states';
+import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/common/states';
 import { Button } from '@/components/ui/button';
 import { useSelectedPortfolio } from '@/lib/portfolio-context';
 import { useDemoPortfolio } from '@/lib/queries';
@@ -18,9 +18,19 @@ export function RequirePortfolio({
 	children: (portfolioId: string) => React.ReactNode;
 	label?: string;
 }) {
-	const { portfolios, isLoading, selectedId } = useSelectedPortfolio();
+	const { portfolios, isLoading, selectedId, error, refetch } = useSelectedPortfolio();
 
-	if (isLoading) return null;
+	if (isLoading) return <LoadingSkeleton />;
+	if (error && portfolios.length === 0)
+		return (
+			<div className="space-y-3" role="status">
+				<h1 className="text-xl font-medium">Your portfolios could not be loaded</h1>
+				<p className="text-muted-foreground text-sm">
+					This is a connection problem, not an empty account. Retry to continue.
+				</p>
+				<ErrorState error={error} onRetry={refetch} />
+			</div>
+		);
 
 	if (portfolios.length === 0) {
 		return (
@@ -47,8 +57,13 @@ export function RequirePortfolio({
 		);
 	}
 
-	if (!selectedId) return null;
-	return <>{children(selectedId)}</>;
+	if (!selectedId) return <LoadingSkeleton />;
+	return (
+		<>
+			{error ? <ErrorState error={error} onRetry={refetch} /> : null}
+			{children(selectedId)}
+		</>
+	);
 }
 
 function DemoPortfolioButton() {
