@@ -144,8 +144,10 @@ def validate_csv_shape(csv_text: str, settings: Settings) -> None:
         raise AppError("Invalid CSV file.", code="INVALID_CSV", status_code=400) from exc
 
 
-async def read_csv_upload(file: UploadFile, settings: Settings) -> str:
-    content = await file.read(settings.csv_upload_max_bytes + 1)
+def read_csv_upload(file: UploadFile, settings: Settings) -> str:
+    # These routes run in FastAPI's worker pool: parsing, SQL and file reads
+    # must not block health checks and other requests on the event loop.
+    content = file.file.read(settings.csv_upload_max_bytes + 1)
     if len(content) > settings.csv_upload_max_bytes:
         raise AppError(
             "CSV file is too large.",
@@ -239,7 +241,7 @@ def reset_demo_portfolio(
 
 
 @router.post("/upload", response_model=PortfolioUploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_portfolio(
+def upload_portfolio(
     request: Request,
     name: str = Form(..., min_length=1, max_length=255),
     description: Optional[str] = Form(default=None, max_length=2000),
@@ -251,7 +253,7 @@ async def upload_portfolio(
     user: User = Depends(get_current_user),
 ) -> PortfolioUploadResponse:
     enforce_csv_upload_limit(request, db, settings, user)
-    csv_text = await read_csv_upload(file, settings)
+    csv_text = read_csv_upload(file, settings)
     portfolio, trades, positions = configured_portfolio_service(db, settings).upload_trades_csv(
         user,
         name=name,
@@ -270,7 +272,7 @@ async def upload_portfolio(
 
 
 @router.post("/upload/preview", response_model=PortfolioCsvPreviewResponse)
-async def preview_portfolio_upload(
+def preview_portfolio_upload(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -278,14 +280,14 @@ async def preview_portfolio_upload(
     user: User = Depends(get_current_user),
 ) -> PortfolioCsvPreviewResponse:
     enforce_csv_upload_limit(request, db, settings, user)
-    csv_text = await read_csv_upload(file, settings)
+    csv_text = read_csv_upload(file, settings)
     return PortfolioCsvPreviewResponse(
         **configured_portfolio_service(db, settings).preview_trades_csv(csv_text)
     )
 
 
 @router.post("/upload/resolve", response_model=PortfolioCsvResolutionResponse)
-async def resolve_portfolio_upload(
+def resolve_portfolio_upload(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -293,7 +295,7 @@ async def resolve_portfolio_upload(
     user: User = Depends(get_current_user),
 ) -> PortfolioCsvResolutionResponse:
     enforce_csv_upload_limit(request, db, settings, user)
-    csv_text = await read_csv_upload(file, settings)
+    csv_text = read_csv_upload(file, settings)
     return PortfolioCsvResolutionResponse(
         **configured_portfolio_service(db, settings).resolve_trades_csv(csv_text)
     )

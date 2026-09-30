@@ -421,6 +421,7 @@ class MarketDataFetchService:
     ) -> list[dict]:
         records: list[dict] = []
 
+        grouped_ranges: dict[tuple[date, date], list[str]] = {}
         for ticker in tickers:
             for missing_start, missing_end in self._missing_price_ranges(
                 stored,
@@ -428,15 +429,12 @@ class MarketDataFetchService:
                 start_date,
                 end_date,
             ):
-                raw_prices = self.provider.get_ohlcv(
-                    [ticker],
-                    missing_start,
-                    missing_end,
-                )
-                normalized = self._normalize_ohlcv(raw_prices, [ticker])
-                records.extend(
-                    record
-                    for record in normalized
-                    if missing_start <= record["date"] <= missing_end
-                )
+                grouped_ranges.setdefault((missing_start, missing_end), []).append(ticker)
+        for (missing_start, missing_end), symbols in grouped_ranges.items():
+            raw_prices = self.provider.get_ohlcv(symbols, missing_start, missing_end)
+            normalized = self._normalize_ohlcv(raw_prices, symbols)
+            records.extend(
+                record for record in normalized
+                if missing_start <= record["date"] <= missing_end
+            )
         return records

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import StringIO
+import math
 import re
 from typing import Any
 
@@ -8,6 +9,7 @@ import pandas as pd
 
 from src.api.errors import AppError
 from src.database.models import Portfolio, Position, Trade, User
+from src.portfolio.currency import validate_trade_currency
 
 
 REQUIRED_TRADE_COLUMNS = {"ticker", "quantity", "transaction_date", "price"}
@@ -176,6 +178,9 @@ class PortfolioCsvImportService:
                 details=report,
             )
 
+        for row in df.to_dict(orient="records"):
+            validate_trade_currency(base_currency, str(row["currency"]), str(row["ticker"]))
+
         portfolio = self.create_portfolio(
             user,
             name=name,
@@ -209,6 +214,7 @@ class PortfolioCsvImportService:
                 self.db.add(trade)
                 trades.append(trade)
 
+            self._build_position_rows(trades)
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
@@ -221,13 +227,13 @@ class PortfolioCsvImportService:
                 details=str(exc),
             ) from exc
 
-        for trade in trades:
-            self.db.refresh(trade)
-
         positions = self.recalculate_positions(
             user,
             portfolio.id,
+            refresh_market_data=False,
         )
+        # Reload in one query after commits, not one remote round trip per trade.
+        trades = self.list_trades(user, portfolio.id)
         self.db.refresh(portfolio)
 
         return portfolio, trades, positions
@@ -354,8 +360,8 @@ class PortfolioCsvImportService:
         frame["transaction_date"] = pd.to_datetime(
             frame["transaction_date"], errors="coerce", format="mixed"
         )
-        frame["fees"] = pd.to_numeric(frame["fees"], errors="coerce").fillna(0.0)
-        frame["taxes"] = pd.to_numeric(frame["taxes"], errors="coerce").fillna(0.0)
+        frame["fees"] = pd.to_numeric(frame["fees"].fillna(0.0), errors="coerce")
+        frame["taxes"] = pd.to_numeric(frame["taxes"].fillna(0.0), errors="coerce")
         frame["currency"] = frame["currency"].fillna("INR").astype(str).str.upper().str.strip()
 
         holdings: dict[str, float] = {}
@@ -373,16 +379,16 @@ class PortfolioCsvImportService:
                 errors.append(self._issue(row_number, "ticker", "Enter a valid ticker symbol."))
             if transaction_type not in {"BUY", "SELL"}:
                 errors.append(self._issue(row_number, "transaction_type", "Use BUY or SELL."))
-            if pd.isna(quantity) or float(quantity) <= 0:
+            if not math.isfinite(float(quantity)) or float(quantity) <= 0:
                 errors.append(self._issue(row_number, "quantity", "Quantity must be greater than zero."))
-            if pd.isna(price) or float(price) <= 0:
+            if not math.isfinite(float(price)) or float(price) <= 0:
                 errors.append(self._issue(row_number, "price", "Price must be greater than zero."))
             if pd.isna(transaction_date):
                 errors.append(self._issue(row_number, "transaction_date", "Enter a valid trade date."))
-            if float(row["fees"]) < 0:
-                errors.append(self._issue(row_number, "fees", "Fees cannot be negative."))
-            if float(row["taxes"]) < 0:
-                errors.append(self._issue(row_number, "taxes", "Taxes cannot be negative."))
+            if not math.isfinite(float(row["fees"])) or float(row["fees"]) < 0:
+                errors.append(self._issue(row_number, "fees", "Fees must be a finite, non-negative number."))
+            if not math.isfinite(float(row["taxes"])) or float(row["taxes"]) < 0:
+                errors.append(self._issue(row_number, "taxes", "Taxes must be a finite, non-negative number."))
             if not re.fullmatch(r"[A-Z]{3,12}", str(row["currency"])):
                 errors.append(
                     self._issue(

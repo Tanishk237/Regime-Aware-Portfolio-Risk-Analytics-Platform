@@ -14,14 +14,14 @@ METRIC_GLOSSARY = {
         "portfolio_summary",
     ),
     "total_return": (
-        "Total return",
-        "Current portfolio value divided by invested capital, minus one.",
+        "Open-holding return",
+        "Unrealized profit or loss divided by the remaining cost basis of open holdings. Excludes realized gains and withdrawals.",
         "It shows the open portfolio's gain or loss using one consistent capital base.",
         "portfolio_summary",
     ),
     "period_return": (
         "Period return",
-        "The compounded change across the portfolio return observations in the analytics window.",
+        "The compounded modeled return of today's holdings, held at fixed cost weights throughout the selected window. Not actual investor performance.",
         "It measures the selected historical path and can differ from the open-position return shown in the portfolio summary.",
         "risk_analytics",
     ),
@@ -40,7 +40,7 @@ METRIC_GLOSSARY = {
     "max_drawdown": (
         "Maximum drawdown",
         "The largest peak-to-trough decline in the analyzed portfolio return path.",
-        "It describes the deepest historical loss an investor would have had to tolerate.",
+        "It describes the deepest fall in the hypothetical current-holdings basket, not your realized loss.",
         "risk_analytics",
     ),
     "annualized_volatility": (
@@ -192,11 +192,13 @@ class PortfolioInsightService:
                 "",
                 "## Portfolio",
                 f"- Current value: {self._format_currency(summary.get('current_value'), base_currency)}",
-                f"- Invested capital: {self._format_currency(summary.get('invested_value'), base_currency)}",
-                f"- Total return: {self._format_value('total_return', summary.get('total_return'))}",
+                f"- Remaining cost basis: {self._format_currency(summary.get('invested_value'), base_currency)}",
+                f"- Open-holding return: {self._format_value('total_return', summary.get('total_return'))}",
                 f"- Open positions: {len(positions)}",
                 "",
                 "## Risk",
+                "Hypothetical current-holdings basket; not actual trade or cash-flow performance.",
+                f"- Risk-review score: {(risk.get('review') or {}).get('score') if (risk.get('review') or {}).get('score') is not None else 'Unavailable'} (uncalibrated review aid)",
                 f"- Maximum drawdown: {self._format_value('max_drawdown', metrics.get('max_drawdown'))}",
                 f"- Annualized volatility: {self._format_value('annualized_volatility', metrics.get('annualized_volatility'))}",
                 f"- Historical VaR: {self._format_value('historical_var', metrics.get('historical_var'))}",
@@ -279,7 +281,7 @@ class PortfolioInsightService:
         if value is None:
             return "This value is unavailable because the required valuation or market history is incomplete."
         if key == "total_return":
-            return "Current value is above invested capital." if value >= 0 else "Current value is below invested capital."
+            return "Open holdings are above their remaining purchase cost." if value >= 0 else "Open holdings are below their remaining purchase cost."
         if key == "period_return":
             return "The analyzed return path gained value." if value >= 0 else "The analyzed return path lost value."
         if key == "max_drawdown":

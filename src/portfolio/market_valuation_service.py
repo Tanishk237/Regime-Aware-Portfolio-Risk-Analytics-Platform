@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class PortfolioMarketValuationService:
-    def _refresh_position_market_values(self, portfolio_id: int) -> None:
+    def _refresh_position_market_values(self, portfolio_id: int, *, refresh_market_data: bool = True) -> None:
         positions = list(
             self.db.scalars(
                 select(Position)
@@ -26,7 +26,7 @@ class PortfolioMarketValuationService:
         portfolio = self.db.get(Portfolio, portfolio_id)
         include_demo_data = bool(portfolio and portfolio.is_demo)
         tickers = [position.ticker for position in open_positions]
-        start_date = self._portfolio_first_trade_date(portfolio_id)
+        start_date = self._portfolio_first_trade_date(portfolio_id) if refresh_market_data else None
         if start_date is not None:
             self._backfill_market_prices(tickers, start_date, include_demo_data)
 
@@ -91,16 +91,20 @@ class PortfolioMarketValuationService:
         tickers: list[str],
         include_demo_data: bool,
     ) -> dict[str, float]:
-        latest_prices: dict[str, float] = {}
-        for ticker in tickers:
-            query = (
-                self.db.query(MarketPrice)
-                .filter(MarketPrice.ticker == ticker)
-                .order_by(MarketPrice.date.desc())
+        if not tickers:
+            return {}
+        query = select(
+            MarketPrice.ticker, MarketPrice.close,
+            func.row_number().over(
+                partition_by=MarketPrice.ticker, order_by=MarketPrice.date.desc(),
+            ).label("rank"),
+        ).where(MarketPrice.ticker.in_(tickers))
+        if not include_demo_data:
+            query = query.where(MarketPrice.data_source != "demo")
+        ranked = query.subquery()
+        return {
+            ticker: float(close)
+            for ticker, close in self.db.execute(
+                select(ranked.c.ticker, ranked.c.close).where(ranked.c.rank == 1)
             )
-            if not include_demo_data:
-                query = query.filter(MarketPrice.data_source != "demo")
-            row = query.first()
-            if row is not None:
-                latest_prices[ticker] = float(row.close)
-        return latest_prices
+        }

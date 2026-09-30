@@ -79,7 +79,10 @@ class AnalyticsRegimeService:
         for row_date, row in prediction_df.iterrows():
             state = int(row["state"])
             label = str(row["state_label"])
-            probability = float(probabilities.loc[row_date].max())
+            probability = (
+                None if model_name == "deterministic_fallback"
+                else float(probabilities.loc[row_date].iloc[state])
+            )
             history.append(
                 {
                     "date": self._to_date(row_date),
@@ -178,9 +181,8 @@ class AnalyticsRegimeService:
             index=feature_matrix.index,
         )
         state_labels = {0: "Bull", 1: "Bear", 2: "High Volatility"}
-        probabilities = pd.DataFrame(0.05, index=feature_matrix.index, columns=list(state_labels.values()))
-        for row_date, label in zip(feature_matrix.index, labels):
-            probabilities.loc[row_date, label] = 0.90
+        # Rules classify observations; they do not estimate probabilities.
+        probabilities = pd.DataFrame(index=feature_matrix.index, columns=list(state_labels.values()), dtype=float)
 
         transition_matrix = self._estimate_transition_matrix(pd.Series(states), state_count=3)
         return prediction_df, probabilities, transition_matrix, state_labels

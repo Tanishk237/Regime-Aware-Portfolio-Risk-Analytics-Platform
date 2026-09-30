@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 
 from src.api.errors import AppError
-from src.database.models import Portfolio, User
+from src.database.models import Portfolio, Trade, User
 
 
 class PortfolioCrudService:
@@ -91,6 +91,13 @@ class PortfolioCrudService:
     ) -> Portfolio:
         portfolio = self.get_portfolio(user, portfolio_id)
 
+        if base_currency is not None and base_currency.strip().upper() != portfolio.base_currency:
+            has_trades = self.db.scalar(select(Trade.id).where(Trade.portfolio_id == portfolio_id).limit(1))
+            if has_trades is not None:
+                raise AppError(
+                    "A portfolio with trades cannot change currency. Create a separate portfolio instead.",
+                    code="PORTFOLIO_CURRENCY_LOCKED", status_code=422,
+                )
         if name is not None:
             portfolio.name = name.strip()
         if update_description:

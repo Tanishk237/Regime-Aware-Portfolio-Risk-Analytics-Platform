@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import delete, func, select
 
 from src.api.errors import AppError
+from src.portfolio.currency import validate_trade_currency
 from src.database.models import (
     MarketPrice,
     Portfolio,
@@ -24,9 +25,13 @@ class PortfolioPositionService:
         self,
         user: User,
         portfolio_id: int,
+        *,
+        refresh_market_data: bool = True,
     ) -> list[Position]:
-        self.get_portfolio(user, portfolio_id)
+        portfolio = self.get_portfolio(user, portfolio_id)
         trades = self.list_trades(user, portfolio_id)
+        for trade in trades:
+            validate_trade_currency(portfolio.base_currency, trade.currency, trade.ticker)
 
         self.db.execute(
             delete(Position).where(
@@ -61,16 +66,12 @@ class PortfolioPositionService:
             positions.append(position)
 
         self.db.commit()
-        for position in positions:
-            self.db.refresh(position)
-
-        self._refresh_position_market_values(portfolio_id)
-        for position in positions:
-            self.db.refresh(position)
-
+        self._refresh_position_market_values(portfolio_id, refresh_market_data=refresh_market_data)
         self._invalidate_derived_snapshots(portfolio_id)
-
-        return positions
+        return list(self.db.scalars(
+            select(Position).where(Position.portfolio_id == portfolio_id)
+            .order_by(Position.ticker).execution_options(populate_existing=True)
+        ))
 
     def _invalidate_derived_snapshots(self, portfolio_id: int) -> None:
         for model in (
@@ -94,6 +95,8 @@ class PortfolioPositionService:
         self,
         user: User,
         portfolio_id: int,
+        *,
+        refresh_market_data: bool = True,
     ) -> list[Position]:
         self.get_portfolio(user, portfolio_id)
         positions = list(
@@ -112,9 +115,10 @@ class PortfolioPositionService:
                 positions = self.recalculate_positions(
                     user,
                     portfolio_id,
+                    refresh_market_data=refresh_market_data,
                 )
         else:
-            self._refresh_position_market_values(portfolio_id)
+            self._refresh_position_market_values(portfolio_id, refresh_market_data=refresh_market_data)
             positions = list(
                 self.db.scalars(
                     select(Position)
@@ -173,19 +177,27 @@ class PortfolioPositionService:
         )
         start_date = first_trade_date or portfolio.created_at.date()
         end_date = latest_price_date or date.today()
-        AnalyticsService(
+        analytics = AnalyticsService(
             self.db,
             market_data_service=self.market_data_service,
             runtime_hmm_fit_enabled=self.runtime_hmm_fit_enabled,
             max_regime_observations=self.max_regime_observations,
             max_history_days=self.max_market_history_days,
-        ).build_risk_payload(
+        )
+        payload = analytics.build_risk_payload(
             user,
             portfolio.id,
             start_date=start_date,
             end_date=end_date,
-            persist=True,
+            persist=False,
         )
+        # This endpoint alone rebuilds the full canonical series up to the last
+        # available quote. A user-selected analytics window never reaches here.
+        import pandas as pd
+        analytics._persist_returns(portfolio.id, pd.Series(
+            [row["daily_return"] for row in payload["returns"]],
+            index=pd.to_datetime([row["date"] for row in payload["returns"]]), dtype=float,
+        ))
 
     def build_summary(
         self,
@@ -196,7 +208,9 @@ class PortfolioPositionService:
     ) -> dict:
         portfolio = self.get_portfolio(user, portfolio_id)
         trades = self.list_trades(user, portfolio_id)
-        positions = positions if positions is not None else self.list_positions(user, portfolio_id)
+        positions = positions if positions is not None else self.list_positions(
+            user, portfolio_id, refresh_market_data=False,
+        )
         returns = self._stored_returns(portfolio_id)
 
         invested_value = sum(

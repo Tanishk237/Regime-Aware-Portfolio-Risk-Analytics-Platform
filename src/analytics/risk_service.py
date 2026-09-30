@@ -117,15 +117,14 @@ class AnalyticsRiskService:
         positions = PortfolioService(
             self.db,
             market_data_service=self.market_data_service,
-        ).list_positions(user, portfolio_id)
+        ).list_positions(user, portfolio_id, refresh_market_data=False)
         total_cost_basis = float(sum(position.cost_basis for position in positions))
         realized_pnl = float(sum(position.realized_pnl for position in positions))
         position_rows = []
         open_market_values = []
 
         for position in positions:
-            latest_price = self._latest_close(position.ticker)
-            current_price = latest_price if latest_price is not None else position.current_price
+            current_price = position.current_price
             position_market_value = (
                 float(position.quantity) * float(current_price)
                 if current_price is not None

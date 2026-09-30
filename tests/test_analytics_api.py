@@ -11,9 +11,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api.main import create_app
 from src.api.errors import AppError
 from src.config.settings import Settings
-from src.database.models import MarketPrice, RegimePrediction, RiskMetric
+from src.database.models import MarketPrice, PortfolioReturn, RegimePrediction, RiskMetric
 from src.market.cache import market_data_cache
-from src.market.providers import YahooFinanceProvider
+from src.market.providers import MarketDataProviderError, YahooFinanceProvider
+
+
+@pytest.fixture(autouse=True)
+def disable_live_price_backfill(monkeypatch):
+    """Keep analytics tests deterministic and independent of Yahoo availability."""
+
+    def unavailable_prices(self, tickers, start_date, end_date=None):
+        raise MarketDataProviderError("Live price backfill is disabled in analytics tests.")
+
+    monkeypatch.setattr(YahooFinanceProvider, "get_ohlcv", unavailable_prices)
 
 
 def build_client(tmp_path, *, fii_dii_csv_path: str = "data/external/fii_dii.csv") -> TestClient:
@@ -108,7 +118,7 @@ def write_flow_csv(tmp_path, days: int = 45) -> str:
     return str(path)
 
 
-def test_risk_analytics_returns_metrics_series_pnl_and_persists(tmp_path):
+def test_custom_risk_analytics_returns_metrics_without_persisting(tmp_path):
     with build_client(tmp_path) as client:
         authenticate(client)
         portfolio_id = create_portfolio_with_trades(client)
@@ -154,7 +164,7 @@ def test_risk_analytics_returns_metrics_series_pnl_and_persists(tmp_path):
 
         db = client.app.state.session_factory()
         try:
-            assert db.query(RiskMetric).count() == 1
+            assert db.query(RiskMetric).count() == 0
         finally:
             db.close()
 
@@ -313,3 +323,78 @@ def test_risk_analytics_rejects_invalid_date_range(tmp_path):
 
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "INVALID_DATE_RANGE"
+
+
+def test_custom_analysis_cannot_overwrite_the_canonical_review(tmp_path, monkeypatch):
+    from datetime import date
+
+    class FixtureDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2024, 3, 30)
+
+    monkeypatch.setattr("src.market.persistence.date", FixtureDate)
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio_with_trades(client)
+        seed_market_prices(client, days=90)
+        endpoint = f"/api/v1/analytics/portfolio/{portfolio_id}/risk"
+        response = client.get(endpoint)
+        assert response.status_code == 200, response.json()
+        canonical = response.json()
+        assert canonical["review"]["status"] == "complete"
+        assert canonical["methodology"]["observations"] == len(canonical["returns"])
+        with client.app.state.session_factory() as db:
+            before = [(r.date, r.daily_return, r.cumulative_return) for r in db.query(PortfolioReturn).order_by(PortfolioReturn.date)]
+            score = db.query(RiskMetric).one().health_score
+            assert score == canonical["review"]["score"]
+        custom = client.get(endpoint, params={"start_date": "2024-03-01", "end_date": "2024-03-30", "confidence_level": .99, "persist": True})
+        assert custom.status_code == 200
+        assert custom.json()["review"]["score"] is None
+        with client.app.state.session_factory() as db:
+            assert [(r.date, r.daily_return, r.cumulative_return) for r in db.query(PortfolioReturn).order_by(PortfolioReturn.date)] == before
+            assert db.query(RiskMetric).one().health_score == score
+
+
+def test_rule_fallback_has_no_invented_probability(tmp_path, monkeypatch):
+    from src.analytics.analytics_service import AnalyticsService
+
+    def unavailable_hmm(self, feature_matrix):
+        raise ValueError("No model available")
+
+    monkeypatch.setattr(AnalyticsService, "_fit_runtime_hmm", unavailable_hmm)
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio_with_trades(client)
+        seed_market_prices(client)
+        response = client.post(f"/api/v1/analytics/portfolio/{portfolio_id}/regime", json={"start_date": "2024-01-01", "end_date": "2024-02-14"})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["feature_metadata"]["model_fallback_used"] is True
+        assert payload["regime_probability"] is None
+        assert all(row["probability"] is None for row in payload["regime_history"])
+        with client.app.state.session_factory() as db:
+            assert db.query(RegimePrediction).count() == 0
+
+
+def test_regime_probability_belongs_to_the_decoded_state_not_the_largest_posterior():
+    from src.analytics.analytics_service import AnalyticsService
+
+    service = AnalyticsService(None)
+    dates = pd.date_range("2024-01-01", periods=2)
+    features = pd.DataFrame({"portfolio_return": [.01, -.01]}, index=dates)
+    predictions = pd.DataFrame({"state": [0, 1], "state_label": ["Bull", "Bear"]}, index=dates)
+    probabilities = pd.DataFrame([[.4, .6], [.8, .2]], index=dates, columns=["Bull", "Bear"])
+    result = service._build_regime_result(features, predictions, probabilities, pd.DataFrame([[.7, .3], [.3, .7]]), {0: "Bull", 1: "Bear"}, "hmm")
+    assert result["current_regime"] == "Bear"
+    assert result["regime_probability"] == .2
+    assert result["history"][0]["probability"] == .4
+
+
+@pytest.mark.parametrize("params", [{"risk_free_rate": "nan"}, {"risk_free_rate": "inf"}, {"rolling_window": 1000000}])
+def test_risk_parameters_have_finite_bounded_work(tmp_path, params):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio_id = create_portfolio_with_trades(client)
+        response = client.get(f"/api/v1/analytics/portfolio/{portfolio_id}/risk", params=params)
+        assert response.status_code == 422

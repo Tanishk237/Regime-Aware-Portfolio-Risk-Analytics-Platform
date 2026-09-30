@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 from fastapi.testclient import TestClient
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -61,6 +62,42 @@ def create_portfolio(client: TestClient) -> dict:
 
     assert response.status_code == 201
     return response.json()
+
+
+def test_currency_mismatches_cannot_relabel_or_corrupt_holdings(tmp_path):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        portfolio = create_portfolio(client)
+        endpoint = f"/api/v1/portfolio/{portfolio['id']}"
+        trade = {"ticker": "INFY.NS", "transaction_type": "BUY", "quantity": 1, "transaction_date": "2024-01-01", "price": 100, "currency": "USD"}
+        assert client.post(f"{endpoint}/trades", json=trade).status_code == 422
+        assert client.get(f"{endpoint}/trades").json() == []
+        accepted = client.post(f"{endpoint}/trades", json={**trade, "currency": "INR"})
+        assert accepted.status_code == 201
+        assert client.put(f"{endpoint}/trades/{accepted.json()['id']}", json={"currency": "USD"}).status_code == 422
+        assert client.put(endpoint, json={"base_currency": "USD"}).status_code == 422
+        assert client.get(f"{endpoint}/trades").json()[0]["currency"] == "INR"
+        assert client.get(f"{endpoint}/positions").json()[0]["cost_basis"] == 100
+
+
+def test_currency_mismatch_upload_does_not_leave_an_empty_portfolio(tmp_path):
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post("/api/v1/portfolio/upload", data={"name": "Wrong currency", "base_currency": "USD"}, files={"file": ("trades.csv", "ticker,transaction_type,quantity,transaction_date,price,currency\nINFY.NS,BUY,1,2024-01-01,100,INR\n", "text/csv")})
+        assert response.status_code == 422
+        assert client.get("/api/v1/portfolio").json() == []
+
+
+@pytest.mark.parametrize("column,value", [("quantity", "inf"), ("price", "inf"), ("fees", "oops"), ("taxes", "inf")])
+def test_csv_preview_rejects_nonfinite_and_invalid_numeric_values(tmp_path, column, value):
+    row = {"ticker": "INFY.NS", "transaction_type": "BUY", "quantity": "1", "transaction_date": "2024-01-01", "price": "100", "fees": "0", "taxes": "0"}
+    row[column] = value
+    csv = ','.join(row) + '\n' + ','.join(row.values()) + '\n'
+    with build_client(tmp_path) as client:
+        authenticate(client)
+        response = client.post("/api/v1/portfolio/upload/preview", files={"file": ("trades.csv", csv, "text/csv")})
+        assert response.status_code == 200
+        assert response.json()["valid"] is False
 
 
 def test_portfolio_crud_flow(tmp_path):
@@ -440,7 +477,11 @@ def test_sell_transaction_cannot_exceed_current_quantity(tmp_path):
         assert response.json()["error"]["code"] == "INSUFFICIENT_POSITION_QUANTITY"
 
 
-def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
+def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path, monkeypatch):
+    def unexpected_market_request(*args, **kwargs):
+        pytest.fail("Saving a CSV must not wait for an external price provider")
+
+    monkeypatch.setattr(MarketDataService, "get_historical_prices", unexpected_market_request)
     csv_content = (
         "ticker,transaction_type,quantity,transaction_date,price,broker,fees,taxes,currency,notes\n"
         "RELIANCE.NS,BUY,10,2024-01-01,2500,Zerodha,0,0,INR,core\n"
@@ -476,6 +517,37 @@ def test_csv_upload_creates_portfolio_trades_and_positions(tmp_path):
             f"/api/v1/portfolio/{payload['portfolio']['id']}/summary"
         ).json()
         assert summary["invested_value"] == 55000
+        assert summary["current_value"] is None
+
+
+def test_csv_preview_does_not_block_health_check(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from src.portfolio.csv_import_service import PortfolioCsvImportService
+
+    started, release = Event(), Event()
+    original = PortfolioCsvImportService.preview_trades_csv
+
+    def slow_preview(self, csv_text):
+        started.set()
+        assert release.wait(5)
+        return original(self, csv_text)
+
+    monkeypatch.setattr(PortfolioCsvImportService, "preview_trades_csv", slow_preview)
+    with build_client(tmp_path) as client, ThreadPoolExecutor(max_workers=2) as workers:
+        authenticate(client)
+        pending = workers.submit(
+            client.post, "/api/v1/portfolio/upload/preview",
+            files={"file": ("trades.csv", "ticker,quantity,transaction_date,price\nINFY.NS,1,2024-01-01,100\n", "text/csv")},
+        )
+        try:
+            assert started.wait(2)
+            health = workers.submit(client.get, "/api/v1/health")
+            assert health.result(timeout=2).status_code == 200
+            assert not pending.done()
+        finally:
+            release.set()
+        assert pending.result(timeout=3).status_code == 200
 
 
 def test_csv_preview_maps_common_broker_columns_and_normalizes_rows(tmp_path):

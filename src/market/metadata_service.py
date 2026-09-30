@@ -17,6 +17,7 @@ class InstrumentMetadataService:
         tickers: Iterable[str],
         *,
         refresh: bool = False,
+        allow_provider: bool = True,
     ) -> list[dict]:
         requested = [ticker for ticker in tickers if ticker and ticker.strip()]
         if not requested:
@@ -54,7 +55,7 @@ class InstrumentMetadataService:
             or self._metadata_is_stale(stored[ticker], stale_before)
         ]
 
-        fetched = self._fetch_instrument_metadata(to_refresh)
+        fetched = self._fetch_instrument_metadata(to_refresh) if allow_provider else []
         if fetched:
             self._upsert_instrument_metadata(fetched)
             stored.update(
@@ -81,7 +82,8 @@ class InstrumentMetadataService:
             )
             resolved[ticker] = record
             cache_key = self._cache_key("instrument-metadata", [ticker], None, None)
-            self.cache.set(cache_key, record, self.cache_ttl_seconds)
+            if allow_provider:
+                self.cache.set(cache_key, record, self.cache_ttl_seconds)
 
         return [resolved[ticker] for ticker in normalized]
 

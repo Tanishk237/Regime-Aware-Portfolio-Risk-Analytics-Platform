@@ -286,23 +286,26 @@ class RecommendationService:
             )
 
         regime_label = str(regime.get("current_regime") or "").lower()
+        probability = self._number(regime.get("regime_probability"))
+        regime_evidence = (
+            f"State-fit probability {probability * 100:.2f}% (not forecast confidence)"
+            if probability is not None else "Rule-based state estimate; no statistical probability available"
+        )
         if any(word in regime_label for word in ("bear", "crisis", "volatility")):
-            confidence = self._number(regime.get("regime_probability")) or 0.5
             candidates.append(
                 self._candidate(
                     f"regime-{regime_label.replace(' ', '-')}",
                     "high" if "crisis" in regime_label or "bear" in regime_label else "medium",
                     "Regime",
                     f"Portfolio is operating in a {regime.get('current_regime')} state",
-                    "The HMM currently detects a less supportive market environment.",
-                    f"State-fit probability {confidence * 100:.2f}% (not forecast confidence)",
+                    "The latest market-state analysis indicates elevated risk conditions.",
+                    regime_evidence,
                     "Confirm concentration and downside limits before taking more exposure.",
                     "Aligns near-term decisions with the currently observed market state.",
                     0.65,
                 )
             )
         elif regime_label:
-            confidence = self._number(regime.get("regime_probability")) or 0.5
             candidates.append(
                 self._candidate(
                     f"regime-monitoring-{regime_label.replace(' ', '-')}",
@@ -310,7 +313,7 @@ class RecommendationService:
                     "Regime",
                     f"Monitor the current {regime.get('current_regime')} regime",
                     "A supportive market state can still change and does not remove portfolio-specific risk.",
-                    f"State-fit probability {confidence * 100:.2f}% (not forecast confidence)",
+                    regime_evidence,
                     "Watch for a regime transition before increasing exposure solely on recent momentum.",
                     "Keeps allocation decisions connected to changes in the observed market state.",
                     0.65,
@@ -339,9 +342,9 @@ class RecommendationService:
                     "negative-total-return",
                     severity,
                     "Performance",
-                    "Portfolio return is below invested capital",
+                    "Open holdings are below their remaining cost",
                     "Current market value is below the capital represented by open positions.",
-                    f"Total return {total_return * 100:.2f}%",
+                    f"Open-holding return {total_return * 100:.2f}%",
                     "Review attribution before changing the portfolio solely because of the headline return.",
                     "Encourages decisions based on drivers rather than one aggregate number.",
                     0.92,

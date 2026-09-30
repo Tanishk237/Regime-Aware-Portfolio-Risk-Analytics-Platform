@@ -7,6 +7,7 @@ import pandas as pd
 from sqlalchemy import delete, func, select
 from src.database.upsert import upsert_rows
 from src.database.models import MarketPrice, PortfolioReturn, RegimePrediction, RiskMetric, Trade
+from src.analytics.health import build_risk_review
 
 
 class AnalyticsReturnsRepository:
@@ -68,7 +69,7 @@ class AnalyticsReturnsRepository:
             "sortino": metrics["sortino"],
             "drawdown": metrics["max_drawdown"],
             "volatility": metrics["annualized_volatility"],
-            "health_score": self._health_score(metrics),
+            "health_score": build_risk_review(metrics, len(returns))["score"],
         }
         upsert_rows(
             self.db,

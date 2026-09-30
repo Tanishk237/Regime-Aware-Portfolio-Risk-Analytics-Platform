@@ -305,18 +305,14 @@ def test_feature_matrix_builds_validated_records_and_market_features(tmp_path, m
     )
 
     def fake_ohlcv(self, tickers, start_date, end_date):
-        ticker = tickers[0]
-        close = price_history[ticker]
-        return pd.DataFrame(
-            {
-                "Open": close,
-                "High": close + 1,
-                "Low": close - 1,
-                "Close": close,
-                "Volume": 1000,
-            },
-            index=price_history.index,
-        )
+        frames = {}
+        for ticker in tickers:
+            close = price_history[ticker]
+            frames[ticker] = pd.DataFrame({
+                "Open": close, "High": close + 1, "Low": close - 1,
+                "Close": close, "Volume": 1000,
+            }, index=price_history.index)
+        return pd.concat(frames, axis=1).swaplevel(0, 1, axis=1)
 
     monkeypatch.setattr(YahooFinanceProvider, "get_ohlcv", fake_ohlcv)
     monkeypatch.setattr(YahooFinanceProvider, "get_india_vix", lambda self, start_date, end_date: vix)

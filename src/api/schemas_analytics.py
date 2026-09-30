@@ -57,6 +57,8 @@ class RiskAnalyticsResponse(BaseModel):
     pnl: PortfolioPnL
     metrics: RiskMetrics
     series: dict[str, list[DatedValue]]
+    review: dict[str, Any]
+    methodology: dict[str, Any]
 
 
 class RegimeAnalyticsRequest(BaseModel):
@@ -80,7 +82,7 @@ class RegimeHistoryPoint(BaseModel):
     date: date
     hidden_state: int
     regime_label: str
-    probability: float
+    probability: Optional[float] = None
 
 
 class RegimeStatistic(BaseModel):
@@ -116,7 +118,7 @@ class RegimeAnalyticsResponse(BaseModel):
     tickers: list[str]
     current_regime: str
     current_state: int
-    regime_probability: float
+    regime_probability: Optional[float] = None
     regime_history: list[RegimeHistoryPoint]
     transition_matrix: list[list[float]]
     regime_statistics: list[RegimeStatistic]

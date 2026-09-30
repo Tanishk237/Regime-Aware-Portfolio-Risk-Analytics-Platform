@@ -53,26 +53,10 @@ class PortfolioIntelligenceContextService:
             market_data_service=self.market_data_service,
         )
         portfolio = portfolio_service.get_portfolio(user, portfolio_id)
-        positions_models = portfolio_service.list_positions(user, portfolio.id)
-        summary = portfolio_service.build_summary(
-            user,
-            portfolio.id,
-            positions=positions_models,
-        )
-        summary["benchmark"] = portfolio.benchmark
-        tickers = [position.ticker for position in positions_models if position.quantity > 0]
-        metadata = {
-            item["ticker"]: item
-            for item in self.market_data_service.get_instrument_metadata(
-                tickers,
-                refresh=refresh,
-            )
-        }
-        positions = [
-            self._position_record(position, metadata.get(position.ticker))
-            for position in positions_models
-        ]
-        sector_allocation = self._sector_allocation(positions)
+        if portfolio.is_demo:
+            from src.portfolio.demo_service import _StoredDataOnlyProvider
+
+            self.market_data_service.provider = _StoredDataOnlyProvider()
         namespace = database_cache_namespace(self.db)
         revision = portfolio.updated_at.isoformat() if portfolio.updated_at else "initial"
         if refresh:
@@ -89,7 +73,26 @@ class PortfolioIntelligenceContextService:
             )
         risk = analytics_snapshot["risk"]
         regime = analytics_snapshot["regime"]
-        warnings = analytics_snapshot["warnings"]
+        # Price history is fetched by analytics once. Revalue from those stored
+        # quotes so the headline and charts use the same completed data fetch.
+        positions_models = portfolio_service.list_positions(
+            user, portfolio.id, refresh_market_data=False,
+        )
+        summary = portfolio_service.build_summary(user, portfolio.id, positions=positions_models)
+        summary["benchmark"] = portfolio.benchmark
+        tickers = [position.ticker for position in positions_models if position.quantity > 0]
+        metadata = {
+            item["ticker"]: item
+            for item in self.market_data_service.get_instrument_metadata(
+                tickers, refresh=refresh, allow_provider=refresh and not portfolio.is_demo,
+            )
+        }
+        positions = [self._position_record(p, metadata.get(p.ticker)) for p in positions_models]
+        sector_allocation = self._sector_allocation(positions)
+        warnings = list(analytics_snapshot["warnings"])
+        unpriced = [p["ticker"] for p in positions if p["quantity"] > 0 and p["market_value"] is None]
+        if unpriced:
+            warnings.append("Prices are missing for " + ", ".join(unpriced) + ". Sector allocation covers priced holdings only.")
         data_as_of = analytics_snapshot["data_as_of"]
         profile = RiskProfileService(self.db).get_or_create(user)
         context = {
@@ -158,6 +161,12 @@ class PortfolioIntelligenceContextService:
         if any(word in text for word in ("risk", "var", "drawdown", "volatility", "sharpe", "sortino")):
             tools.append("get_risk_metrics")
             results["risk"] = context.get("risk")
+        if any(word in text for word in ("health", "score", "review")):
+            tools.append("get_risk_review")
+            results["risk_review"] = {
+                "review": (context.get("risk") or {}).get("review"),
+                "methodology": (context.get("risk") or {}).get("methodology"),
+            }
         if any(word in text for word in ("regime", "state", "confidence", "transition")):
             tools.append("get_current_regime")
             results["regime"] = context.get("regime")
@@ -210,8 +219,6 @@ class PortfolioIntelligenceContextService:
             if (position.get("quantity") or 0) <= 0:
                 continue
             value = position.get("market_value")
-            if value is None:
-                value = position.get("cost_basis")
             value = float(value or 0)
             if value <= 0:
                 continue
@@ -274,7 +281,7 @@ class PortfolioIntelligenceContextService:
         lines = []
         if total_return is not None:
             direction = "up" if total_return >= 0 else "down"
-            lines.append(f"The portfolio is {direction} {abs(total_return) * 100:.2f}% on invested capital.")
+            lines.append(f"Open holdings are {direction} {abs(total_return) * 100:.2f}% against their remaining cost basis. Realized gains are reported separately.")
         if current_regime:
             confidence = regime.get("regime_probability")
             confidence_text = (
@@ -282,9 +289,10 @@ class PortfolioIntelligenceContextService:
                 if confidence is not None
                 else ""
             )
-            lines.append(f"The current market state is {current_regime}{confidence_text}.")
+            mode = " (rule-based estimate)" if regime.get("feature_metadata", {}).get("model_fallback_used") else ""
+            lines.append(f"The current market state is {current_regime}{mode}{confidence_text}.")
         if max_drawdown is not None:
-            lines.append(f"The largest observed peak-to-trough decline is {abs(max_drawdown) * 100:.2f}%.")
+            lines.append(f"The current-holdings model had a largest historical fall of {abs(max_drawdown) * 100:.2f}%. This is not your realized loss.")
         if largest_sector:
             lines.append(
                 f"{largest_sector['sector']} is the largest sector exposure at {largest_sector['weight'] * 100:.1f}% of current value."
@@ -311,7 +319,7 @@ class PortfolioIntelligenceContextService:
                 "as_of": as_of,
             },
             {
-                "label": "Total return",
+                "label": "Open-holding return",
                 "value": str(summary.get("total_return")),
                 "source": "portfolio_summary",
                 "as_of": as_of,

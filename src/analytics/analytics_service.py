@@ -10,6 +10,7 @@ from src.analytics.regime_service import AnalyticsRegimeService
 from src.analytics.returns_repository import AnalyticsReturnsRepository
 from src.analytics.risk_service import AnalyticsRiskService
 from src.analytics.utils import AnalyticsUtils
+from src.analytics.health import build_risk_review
 from src.database.models import Portfolio, Trade, User
 from src.market import MarketDataService
 from src.portfolio.portfolio_service import PortfolioService
@@ -66,6 +67,11 @@ class AnalyticsService(
         )
         portfolio = portfolio_service.get_portfolio(user, portfolio_id)
         self.market_data_service.allow_demo_data = portfolio.is_demo
+        # Only the default all-history calculation owns canonical stored snapshots.
+        # Custom windows/settings must never rebase those rows in place.
+        persist = persist and start_date is None and end_date is None and (
+            confidence_level == 0.95 and risk_free_rate == 0.06 and rolling_window == 20
+        )
         first_trade_date = self._portfolio_first_trade_date(portfolio.id)
         start_date = max(start_date or first_trade_date, first_trade_date)
         self._validate_date_range(start_date, end_date)
@@ -91,6 +97,7 @@ class AnalyticsService(
             risk_free_rate=risk_free_rate,
         )
         series = self._build_risk_series(returns, rolling_window=rolling_window)
+        review = build_risk_review(metrics, len(returns))
 
         if persist:
             self._persist_returns(portfolio.id, returns)
@@ -103,6 +110,17 @@ class AnalyticsService(
             "pnl": pnl,
             "metrics": metrics,
             "series": series,
+            "review": review,
+            "methodology": {
+                "basis": "current_holdings_cost_weighted",
+                "description": "Hypothetical daily-rebalanced basket of current open holdings, weighted by remaining cost basis. Not your actual trade or cash-flow performance.",
+                "start_date": returns.index.min().date(),
+                "end_date": returns.index.max().date(),
+                "observations": len(returns),
+                "confidence_level": confidence_level,
+                "risk_free_rate": risk_free_rate,
+                "rolling_window": rolling_window,
+            },
         }
 
     def build_regime_payload(
@@ -125,7 +143,7 @@ class AnalyticsService(
         start_date = max(start_date or first_trade_date, first_trade_date)
         self._validate_date_range(start_date, end_date)
         self._validate_work_window(start_date, end_date)
-        positions = portfolio_service.list_positions(user, portfolio.id)
+        positions = portfolio_service.list_positions(user, portfolio.id, refresh_market_data=False)
         tickers = [position.ticker for position in positions if position.quantity > 0]
         if not tickers:
             raise AppError(
@@ -148,7 +166,7 @@ class AnalyticsService(
         feature_matrix = feature_matrix.tail(self.max_regime_observations)
         regime_payload = self._predict_regimes(feature_matrix)
 
-        if persist:
+        if persist and not regime_payload["model_fallback_used"]:
             self._persist_regime_predictions(portfolio.id, regime_payload["history"])
 
         feature_metadata = feature_payload["metadata"]
@@ -211,16 +229,19 @@ class AnalyticsService(
             likely_state = state_labels.get(str(likely_state_id), f"State {likely_state_id}")
             likely_probability = float(transition_row[likely_state_id])
 
-        probability = float(regime_payload["regime_probability"])
+        probability = regime_payload["regime_probability"]
+        fallback = regime_payload["model_fallback_used"]
         return {
             "summary": (
-                f"The latest validated feature observation is most consistent with the "
+                f"The latest features match the {current_label} rule-based state. No statistical probability is available."
+                if fallback else
+                f"The model assigns the latest observation to the "
                 f"{current_label} state at {probability * 100:.1f}% state-fit probability."
             ),
             "drivers": drivers,
             "current_duration_days": current_duration,
-            "likely_next_state": likely_state,
-            "likely_next_probability": likely_probability,
+            "likely_next_state": None if fallback else likely_state,
+            "likely_next_probability": None if fallback else likely_probability,
             "model_mode": str(regime_payload["model_name"]),
             "probability_note": (
                 "This probability measures how well the latest observation fits the hidden "
@@ -241,7 +262,7 @@ class AnalyticsService(
         positions = PortfolioService(
             self.db,
             market_data_service=self.market_data_service,
-        ).list_positions(user, portfolio.id)
+        ).list_positions(user, portfolio.id, refresh_market_data=False)
         open_positions = [position for position in positions if position.quantity > 0]
         if not open_positions:
             raise AppError(
@@ -275,9 +296,6 @@ class AnalyticsService(
         )
         returns = prices.pct_change().dropna().mul(weights, axis=1).sum(axis=1)
         returns.name = "daily_return"
-
-        if persist:
-            self._persist_returns(portfolio.id, returns)
 
         return returns
 

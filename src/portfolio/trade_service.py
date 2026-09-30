@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 
 from src.api.errors import AppError
 from src.database.models import Portfolio, Trade, User
+from src.portfolio.currency import validate_trade_currency
 
 
 class PortfolioTradeService:
@@ -40,7 +41,8 @@ class PortfolioTradeService:
         currency: str = "INR",
         notes: str | None = None,
     ) -> Trade:
-        self.get_portfolio(user, portfolio_id)
+        portfolio = self.get_portfolio(user, portfolio_id)
+        validate_trade_currency(portfolio.base_currency, currency, ticker)
         self.db.execute(
             select(Portfolio.id).where(Portfolio.id == portfolio_id).with_for_update()
         ).scalar_one()
@@ -109,6 +111,12 @@ class PortfolioTradeService:
         **updates,
     ) -> Trade:
         trade = self.get_trade(user, portfolio_id, trade_id)
+
+        portfolio = self.get_portfolio(user, portfolio_id)
+        validate_trade_currency(
+            portfolio.base_currency, updates.get("currency") or trade.currency,
+            updates.get("ticker") or trade.ticker,
+        )
 
         for key, value in updates.items():
             if value is None:

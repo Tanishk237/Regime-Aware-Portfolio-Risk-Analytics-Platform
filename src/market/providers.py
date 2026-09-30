@@ -266,8 +266,14 @@ class DeterministicTestProvider(MarketDataProvider):
         start_date: date,
         end_date: Optional[date] = None,
     ) -> pd.DataFrame:
-        if len(tickers) != 1:
-            raise MarketDataProviderError("The test provider accepts one ticker per call.")
+        if not tickers:
+            raise MarketDataProviderError("At least one ticker is required.")
+        if len(tickers) > 1:
+            frames = {
+                ticker: self.get_ohlcv([ticker], start_date, end_date)
+                for ticker in tickers
+            }
+            return pd.concat(frames, axis=1).swaplevel(0, 1, axis=1)
         ticker = tickers[0]
         final_date = end_date or date.today()
         index = pd.bdate_range(start=start_date, end=final_date)

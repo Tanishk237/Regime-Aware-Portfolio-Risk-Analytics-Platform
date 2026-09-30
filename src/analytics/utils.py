@@ -93,12 +93,3 @@ class AnalyticsUtils:
                 code="INVALID_DATE_RANGE",
                 status_code=422,
             )
-
-    @staticmethod
-    def _health_score(metrics: dict) -> float:
-        score = 100
-        score -= min(abs(metrics["max_drawdown"]) * 100, 40)
-        score -= min(metrics["annualized_volatility"] * 50, 30)
-        if metrics["sharpe"] is not None:
-            score += max(min(metrics["sharpe"] * 5, 10), -10)
-        return float(max(0, min(100, score)))
