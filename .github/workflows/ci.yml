@@ -47,6 +47,9 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Check for committed provider secrets
+        run: python scripts/check_secrets.py
+
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -106,13 +109,6 @@ jobs:
       - name: End-to-end journey
         working-directory: frontend
         run: npm run test:e2e
-
-      - name: Check for committed provider secrets
-        run: |
-          if git grep -nE 'nvapi-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|postgres(ql)?(\+psycopg)?://[^[:space:]]+:[^[:space:]@]+@[^[:space:]]+\.(neon\.tech|supabase\.co|amazonaws\.com)|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'; then
-            echo "Potential credential or private key found in tracked files."
-            exit 1
-          fi
 
       - name: Upload Playwright artifacts
         if: failure()
