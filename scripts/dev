@@ -7,6 +7,12 @@ BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_HOST="${FRONTEND_HOST:-localhost}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 BACKEND_PYTHON="${LATENT_PYTHON:-${ROOT_DIR}/venv/bin/python}"
+DEMO_MODE=false
+case "${1:-}" in
+	--demo) DEMO_MODE=true ;;
+	"") ;;
+	*) echo "Usage: ./scripts/dev [--demo]"; exit 1 ;;
+esac
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -66,17 +72,34 @@ fi
 
 "${ROOT_DIR}/scripts/bootstrap"
 
+if [[ "${DEMO_MODE}" == true ]]; then
+	echo "Preparing an optimized frontend for your presentation (no page compilation during the demo)..."
+	(
+		cd "${ROOT_DIR}/frontend"
+		NEXT_DIST_DIR=.next-demo LATENT_API_ORIGIN= \
+			NEXT_PUBLIC_API_BASE_URL="http://localhost:${BACKEND_PORT}/api/v1" npm run build
+		mkdir -p .next-demo/standalone/public .next-demo/standalone/.next-demo/static
+		cp -R public/. .next-demo/standalone/public/
+		cp -R .next-demo/static/. .next-demo/standalone/.next-demo/static/
+	)
+fi
+
 echo "Starting Latent backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 (
 	cd "${ROOT_DIR}"
+	RELOAD_ARGS=()
+	if [[ "${DEMO_MODE}" == false ]]; then RELOAD_ARGS=(--reload); fi
 	CORS_ORIGINS="http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}" \
-		"${BACKEND_PYTHON}" -m uvicorn src.api.main:app --reload --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
+		exec "${BACKEND_PYTHON}" -m uvicorn src.api.main:app ${RELOAD_ARGS[@]+"${RELOAD_ARGS[@]}"} --host "${BACKEND_HOST}" --port "${BACKEND_PORT}"
 ) &
 BACKEND_PID=$!
 
 echo "Starting Latent frontend: http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 (
 	cd "${ROOT_DIR}/frontend"
+	if [[ "${DEMO_MODE}" == true ]]; then
+		HOSTNAME="${FRONTEND_HOST}" PORT="${FRONTEND_PORT}" exec node .next-demo/standalone/server.js
+	fi
 	NEXT_PUBLIC_API_BASE_URL="http://localhost:${BACKEND_PORT}/api/v1" \
 		npm run dev -- --hostname "${FRONTEND_HOST}" --port "${FRONTEND_PORT}"
 ) &
