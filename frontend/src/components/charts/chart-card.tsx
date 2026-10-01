@@ -29,7 +29,9 @@ export function ChartCard({
 					<div className="min-w-0">
 						<CardTitle className="text-sm font-medium">{title}</CardTitle>
 						{description ? (
-							<CardDescription className="mt-1 max-w-prose text-xs leading-5">{description}</CardDescription>
+							<CardDescription className="mt-1 max-w-prose text-xs leading-5">
+								{description}
+							</CardDescription>
 						) : null}
 					</div>
 					{action}

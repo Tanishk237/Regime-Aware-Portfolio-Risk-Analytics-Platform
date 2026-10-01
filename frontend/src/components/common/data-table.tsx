@@ -36,12 +36,7 @@ export function DataTable<T>({
 	if (rows.length === 0 && empty) return <>{empty}</>;
 
 	return (
-		<div
-			className={cn(
-				'border-border overflow-x-auto rounded-lg border',
-				className
-			)}
-		>
+		<div className={cn('border-border overflow-x-auto rounded-lg border', className)}>
 			<Table>
 				<TableHeader className="bg-surface">
 					<TableRow className="hover:bg-transparent">

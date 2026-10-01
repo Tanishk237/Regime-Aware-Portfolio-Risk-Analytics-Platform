@@ -53,7 +53,10 @@ export function MetricCard({
 	const labelNode = tooltip ? (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<Button variant="ghost" className="text-muted-foreground h-auto justify-start whitespace-normal p-0 text-left text-xs font-normal underline decoration-dotted underline-offset-4 hover:bg-transparent hover:text-foreground">
+				<Button
+					variant="ghost"
+					className="text-muted-foreground h-auto justify-start whitespace-normal p-0 text-left text-xs font-normal underline decoration-dotted underline-offset-4 hover:bg-transparent hover:text-foreground"
+				>
 					{label}
 				</Button>
 			</TooltipTrigger>
@@ -66,10 +69,7 @@ export function MetricCard({
 	return (
 		<Card
 			data-testid={testId}
-			className={cn(
-				'metric-surface group relative min-h-28 min-w-0 gap-0 p-4 sm:p-5',
-				className
-			)}
+			className={cn('metric-surface group relative min-h-28 min-w-0 gap-0 p-4 sm:p-5', className)}
 		>
 			<div className="flex items-start justify-between gap-2">
 				{labelNode}
@@ -87,7 +87,10 @@ export function MetricCard({
 			) : (
 				<div
 					data-slot="metric-value"
-					className={cn('num mt-3 break-words text-2xl font-medium leading-tight tracking-normal', toneClass)}
+					className={cn(
+						'num mt-3 break-words text-2xl font-medium leading-tight tracking-normal',
+						toneClass
+					)}
 				>
 					{value}
 				</div>

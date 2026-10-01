@@ -39,6 +39,8 @@ export default defineConfig({
 				...process.env,
 				ENVIRONMENT: 'test',
 				DATABASE_URL: e2eDatabaseUrl,
+				MIGRATION_DATABASE_URL: '',
+				DATABASE_SSL_MODE: 'disable',
 				RUN_MIGRATIONS_ON_STARTUP: 'true',
 				CREATE_DB_ON_STARTUP: 'false',
 				AUTH_SECRET_KEY: 'playwright-only-secret-key-not-for-production',
