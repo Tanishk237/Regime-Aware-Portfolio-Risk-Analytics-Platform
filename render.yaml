@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: latent-api
+    name: latent-regime-api
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /api/v1/ready
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
@@ -35,9 +35,9 @@ services:
       - key: AUTH_COOKIE_SAMESITE
         value: lax
       - key: CORS_ORIGINS
-        sync: false
+        value: https://latent-regime.onrender.com
       - key: TRUSTED_HOSTS
-        sync: false
+        value: latent-regime-api.onrender.com,latent-regime.onrender.com,127.0.0.1,localhost
       - key: FORWARDED_ALLOW_IPS
         value: "*"
       - key: API_DOCS_ENABLED
@@ -48,3 +48,24 @@ services:
         value: "false"
       - key: NVIDIA_API_KEY
         sync: false
+
+  - type: web
+    name: latent-regime
+    runtime: docker
+    plan: free
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: /api/v1
+      - key: LATENT_API_ORIGIN
+        value: https://latent-regime-api.onrender.com
+      - key: NEXT_PUBLIC_API_TIMEOUT_MS
+        value: "60000"
+      - key: NEXT_PUBLIC_APP_ENV
+        value: production
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://latent-regime.onrender.com
