@@ -63,6 +63,68 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 const configuredTimeout = Number(process.env['NEXT_PUBLIC_API_TIMEOUT_MS'] ?? 60_000);
 const API_TIMEOUT_MS =
 	Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 60_000;
+const BACKEND_READY_TTL_MS = 30_000;
+const BACKEND_WAKE_DELAYS_MS = [0, 1_000, 2_000, 4_000, 6_000, 8_000, 10_000, 10_000, 10_000];
+let backendReadyUntil = 0;
+
+function isReadOnlyMethod(method: string) {
+	return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+}
+
+function isTransientGatewayStatus(status: number) {
+	return status === 502 || status === 503 || status === 504;
+}
+
+function markBackendReady() {
+	backendReadyUntil = Date.now() + BACKEND_READY_TTL_MS;
+}
+
+function abortableDelay(ms: number, signal: AbortSignal) {
+	if (ms === 0) return Promise.resolve();
+	return new Promise<void>((resolve, reject) => {
+		const timeout = globalThis.setTimeout(() => {
+			signal.removeEventListener('abort', abort);
+			resolve();
+		}, ms);
+		const abort = () => {
+			globalThis.clearTimeout(timeout);
+			const error = new Error('Request cancelled.');
+			error.name = 'AbortError';
+			reject(error);
+		};
+		signal.addEventListener('abort', abort, { once: true });
+	});
+}
+
+async function waitForBackend(signal: AbortSignal) {
+	if (Date.now() < backendReadyUntil) return;
+
+	let lastStatus = 0;
+	for (const delayMs of BACKEND_WAKE_DELAYS_MS) {
+		await abortableDelay(delayMs, signal);
+		try {
+			const response = await fetch(buildUrl('/health'), {
+				cache: 'no-store',
+				credentials: 'include',
+				signal
+			});
+			lastStatus = response.status;
+			if (response.ok) {
+				markBackendReady();
+				return;
+			}
+			if (!isTransientGatewayStatus(response.status)) break;
+		} catch (error) {
+			if (error instanceof Error && error.name === 'AbortError') throw error;
+		}
+	}
+
+	throw new ApiError({
+		code: 'SERVICE_STARTING',
+		message: 'The free demo service is still waking up. Please try again in a moment.',
+		status: lastStatus
+	});
+}
 
 export class ApiError extends Error {
 	code: string;
@@ -168,7 +230,33 @@ async function request<T>(
 			};
 			if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
 		}
-		const response = await fetch(buildUrl(path, opts.params), init);
+		const url = buildUrl(path, opts.params);
+		// Mutations are not replayed after an ambiguous gateway failure. Wake the free
+		// backend first, then send them exactly once.
+		if (!isReadOnlyMethod(method) && Date.now() >= backendReadyUntil) {
+			await waitForBackend(controller.signal);
+		}
+		let response: Response;
+		try {
+			response = await fetch(url, init);
+		} catch (error) {
+			if (
+				!isReadOnlyMethod(method) ||
+				controller.signal.aborted ||
+				(error instanceof Error && error.name === 'AbortError')
+			) {
+				throw error;
+			}
+			backendReadyUntil = 0;
+			await waitForBackend(controller.signal);
+			response = await fetch(url, init);
+		}
+		if (isReadOnlyMethod(method) && isTransientGatewayStatus(response.status)) {
+			backendReadyUntil = 0;
+			await waitForBackend(controller.signal);
+			response = await fetch(url, init);
+		}
+		if (response.ok) markBackendReady();
 		return await parse<T>(response);
 	} catch (error) {
 		if (error instanceof ApiError) throw error;

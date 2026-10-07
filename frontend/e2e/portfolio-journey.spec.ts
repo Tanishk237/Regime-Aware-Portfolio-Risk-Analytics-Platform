@@ -52,6 +52,33 @@ test('protected routes return unauthenticated visitors to login', async ({ page 
 	).toBeVisible();
 });
 
+test('guest access waits for a sleeping backend instead of failing on a gateway response', async ({
+	page
+}) => {
+	let healthAttempts = 0;
+	await page.route(/\/api\/v1\/health(?:\?.*)?$/, async (route) => {
+		healthAttempts += 1;
+		if (healthAttempts <= 2) {
+			await route.fulfill({
+				status: 502,
+				body: 'upstream is starting',
+				headers: {
+					'access-control-allow-origin': 'http://127.0.0.1:3010',
+					'access-control-allow-credentials': 'true'
+				}
+			});
+			return;
+		}
+		await route.continue();
+	});
+	await page.route(/\/api\/v1\/market\/live-prices(?:\?.*)?$/, (route) => route.abort());
+
+	await page.goto('/login', { waitUntil: 'domcontentloaded' });
+	await page.getByRole('button', { name: 'Continue as Guest' }).click();
+	await expect(page).toHaveURL(/\/upload$/, { timeout: 30_000 });
+	expect(healthAttempts).toBeGreaterThan(2);
+});
+
 test('guest can automatically resolve safe CSV formatting issues', async ({ page }) => {
 	await page.goto('/login', { waitUntil: 'domcontentloaded' });
 	const guestButton = page.getByRole('button', { name: 'Continue as Guest' });
