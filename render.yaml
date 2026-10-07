@@ -64,7 +64,7 @@ services:
       - key: LATENT_API_ORIGIN
         value: https://latent-regime-api.onrender.com
       - key: NEXT_PUBLIC_API_TIMEOUT_MS
-        value: "60000"
+        value: "90000"
       - key: NEXT_PUBLIC_APP_ENV
         value: production
       - key: NEXT_PUBLIC_SITE_URL

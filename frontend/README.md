@@ -36,7 +36,7 @@ Copy `.env.example` and set the backend URL:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_API_TIMEOUT_MS=60000
+NEXT_PUBLIC_API_TIMEOUT_MS=90000
 NEXT_PUBLIC_APP_ENV=development
 ```
 

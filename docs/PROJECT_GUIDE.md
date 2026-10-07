@@ -894,7 +894,7 @@ The repository includes a Render Docker blueprint, a standalone Next.js frontend
 NEXT_PUBLIC_API_BASE_URL=/api/v1
 LATENT_API_ORIGIN=https://your-api.example.com
 NEXT_PUBLIC_SITE_URL=https://your-app.example.com
-NEXT_PUBLIC_API_TIMEOUT_MS=60000
+NEXT_PUBLIC_API_TIMEOUT_MS=90000
 NEXT_PUBLIC_APP_ENV=production
 ```
 

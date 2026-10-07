@@ -60,11 +60,13 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	REQUEST_TIMEOUT: 'The request took too long. Please retry.'
 };
 
-const configuredTimeout = Number(process.env['NEXT_PUBLIC_API_TIMEOUT_MS'] ?? 60_000);
+const configuredTimeout = Number(process.env['NEXT_PUBLIC_API_TIMEOUT_MS'] ?? 90_000);
 const API_TIMEOUT_MS =
-	Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 60_000;
+	Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 90_000;
 const BACKEND_READY_TTL_MS = 30_000;
-const BACKEND_WAKE_DELAYS_MS = [0, 1_000, 2_000, 4_000, 6_000, 8_000, 10_000, 10_000, 10_000];
+const BACKEND_WAKE_DELAYS_MS = [
+	0, 1_000, 2_000, 4_000, 6_000, 8_000, 10_000, 10_000, 10_000, 10_000, 10_000
+];
 let backendReadyUntil = 0;
 
 function isReadOnlyMethod(method: string) {
